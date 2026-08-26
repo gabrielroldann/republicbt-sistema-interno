@@ -1,0 +1,42 @@
+# Dependências — nunca versionar. São ~900 MB e se reinstalam com npm install.
+node_modules/
+
+# Saída de build
+dist/
+build/
+.next/
+out/
+.vercel/
+
+# Segredos. O token do Kommo dá acesso total à conta; o da Meta pode gastar
+# dinheiro em anúncio. Nada disso entra no repositório.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Ambiente local
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+.cache/
+coverage/
+
+# Repositórios git antigos, desativados ao unificar tudo num repo só
+**/.git-desativado/
+*.tsbuildinfo
+
+.env.local
+.env*.local
+
+# construção de demonstração (sem variáveis de ambiente), usada pelos testes
+app/dist-mock/
+
+# Documentos de trabalho, fora do versionamento por escolha.
+#
+# Continuam no disco para consulta -- so nao entram no repositorio. Estao aqui
+# no .gitignore, e nao apenas apagados do indice, porque um `git add -A` no
+# futuro traria todos de volta sem ninguem perceber.
+/*.md

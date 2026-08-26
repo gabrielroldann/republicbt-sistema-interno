@@ -1,0 +1,16 @@
+{
+  "name": "republicbt-supabase-sql",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node teste.mjs",
+    "ensaio": "node ensaio.mjs",
+    "teste-acesso": "node teste-acesso.mjs",
+    "teste-funil": "node teste-funil.mjs",
+    "teste-caixa": "node teste-caixa.mjs",
+    "teste-custos": "node teste-custos.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.2.17"
+  }
+}
