@@ -34,9 +34,11 @@ coverage/
 # construção de demonstração (sem variáveis de ambiente), usada pelos testes
 app/dist-mock/
 
-# Documentos de trabalho, fora do versionamento por escolha.
+# NENHUM .md vai para o repositorio. Regra do Gabriel, sem excecao -- nem
+# README, nem documentacao de branch, nem nada que termine em .md, em
+# qualquer pasta.
 #
 # Continuam no disco para consulta -- so nao entram no repositorio. Estao aqui
 # no .gitignore, e nao apenas apagados do indice, porque um `git add -A` no
 # futuro traria todos de volta sem ninguem perceber.
-/*.md
+*.md

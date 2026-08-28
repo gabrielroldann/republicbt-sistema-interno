@@ -1,0 +1,48 @@
+# CI do sistema interno da Republic BT.
+#
+# O QUE ISTO FAZ, E O QUE NÃO FAZ:
+#
+# Roda em toda PR e todo push para dev/homol/main: instala, confere tipos, e
+# constrói a versão de demonstração (sem banco). É o mínimo que garante que
+# ninguém quebrou o build por engano.
+#
+# NÃO faz deploy. A hospedagem ainda não foi decidida — quando for (Vercel,
+# Netlify, ou outra), o passo de deploy entra aqui, condicionado à branch
+# (dev implanta em ambiente de dev, homol em homologação, main em produção).
+# Até lá, "CI verde" quer dizer só isso: compila e não quebrou.
+#
+# NÃO roda as suítes de navegador (teste-*.cjs). Elas precisam de um projeto
+# Supabase de teste com dados semeados e credenciais próprias — rodá-las contra
+# o banco de produção pelo CI escreveria produto e despesa de teste na loja de
+# verdade. Fica para quando houver um projeto Supabase só de CI, como um passo
+# separado.
+name: CI
+
+on:
+  push:
+    branches: [dev, homol, main]
+  pull_request:
+    branches: [dev, homol, main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - run: npm ci
+
+      - name: Checagem de tipos
+        run: npx tsc --noEmit
+
+      - name: Build (dados de demonstração — sem segredo nenhum no CI)
+        run: npx vite build
