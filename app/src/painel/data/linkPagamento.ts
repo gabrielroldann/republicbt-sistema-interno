@@ -22,6 +22,22 @@ export interface ResultadoCriarLink {
   error?: string;
 }
 
+/**
+ * Identifica o cliente pelo telefone — mesmo RPC que a Nova Venda e o
+ * carrinho (maquininha) usam. Chamado antes de criar o link, pra ele já
+ * nascer linkado ao CRM em vez de depender de reconciliação manual depois.
+ */
+export async function identificarClienteParaLink(
+  telefone: string, nome: string | null,
+): Promise<string> {
+  const { data, error } = await supabase.rpc('identificar_cliente', {
+    p_telefone_bruto: telefone,
+    p_nome: nome,
+  });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
 export async function criarLinkPagamento(
   itens: ItemLinkPagamento[], clienteId?: string | null,
 ): Promise<ResultadoCriarLink> {

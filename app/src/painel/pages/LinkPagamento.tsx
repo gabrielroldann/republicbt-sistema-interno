@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input, Select, Campo } from '@/components/ui/field';
 import { gravando } from '@/painel/data/escritas';
-import { criarLinkPagamento } from '@/painel/data/linkPagamento';
+import { criarLinkPagamento, identificarClienteParaLink } from '@/painel/data/linkPagamento';
 import { useEstoque } from '@/painel/data/hooks';
 import { fmtBRL } from '@/lib/utils';
 
@@ -28,6 +28,8 @@ export default function LinkPagamento() {
 
   const [produtoId, setProdutoId] = useState('');
   const [quantidade, setQuantidade] = useState(1);
+  const [clienteNome, setClienteNome] = useState('');
+  const [clienteFone, setClienteFone] = useState('');
   const [carregando, setCarregando] = useState(false);
   const [resultado, setResultado] = useState<
     | { ok: true; linkUrl: string }
@@ -41,7 +43,7 @@ export default function LinkPagamento() {
   const valorTotal = (produto?.preco ?? 0) * quantidade;
 
   async function gerar() {
-    if (!produtoId) return;
+    if (!produtoId || !clienteFone.trim()) return;
     setCopiado(false);
     setResultado(null);
     setCarregando(true);
@@ -54,7 +56,11 @@ export default function LinkPagamento() {
     }
 
     try {
-      const r = await criarLinkPagamento([{ produtoId, quantidade }]);
+      // Identifica o cliente pelo telefone antes de criar o link — mesmo RPC
+      // que Nova Venda e o carrinho da maquininha usam, pra já nascer linkado
+      // ao CRM em vez de depender de reconciliação manual depois.
+      const clienteId = await identificarClienteParaLink(clienteFone, clienteNome.trim() || null);
+      const r = await criarLinkPagamento([{ produtoId, quantidade }], clienteId);
       if (r.linkUrl) {
         setResultado({ ok: true, linkUrl: r.linkUrl });
       } else {
@@ -158,8 +164,27 @@ export default function LinkPagamento() {
         </div>
       </Card>
 
+      <Card>
+        <div className="border-b border-line-soft px-5 py-2.5">
+          <span className="text-sm font-semibold text-ink">Cliente</span>
+        </div>
+        <div className="grid gap-3 p-5 sm:grid-cols-2">
+          <Campo label="Nome" hint="opcional se já for cadastrado">
+            <Input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} />
+          </Campo>
+          <Campo label="Telefone *">
+            <Input
+              value={clienteFone}
+              onChange={(e) => setClienteFone(e.target.value)}
+              placeholder="(85) 9xxxx-xxxx"
+              inputMode="tel"
+            />
+          </Campo>
+        </div>
+      </Card>
+
       <div className="flex justify-end">
-        <Button onClick={gerar} disabled={!produtoId || carregando}>
+        <Button onClick={gerar} disabled={!produtoId || !clienteFone.trim() || carregando}>
           Gerar link de pagamento
         </Button>
       </div>
