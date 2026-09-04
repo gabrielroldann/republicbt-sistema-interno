@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   BarChart3, Boxes, LayoutDashboard, LogOut, Megaphone, PanelLeft, PanelLeftClose,
-  Plus, Receipt, Settings, ShieldCheck, ShoppingCart, Target, User, Users,
+  Plus, Receipt, Settings, ShieldCheck, ShoppingCart, Smartphone, Target, User, Users,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -24,6 +24,10 @@ const grupos: { titulo: string; itens: Item[] }[] = [
     titulo: 'Comercial',
     itens: [
       { to: '/painel/vendas', label: 'Vendas', icone: ShoppingCart },
+      // Fora de `/painel/*` de propósito (ver App.tsx) — tela cheia, sem menu,
+      // pensada para o celular. Fica aqui só como atalho de quem já está no
+      // painel e precisa abrir rápido, num computador ou testando.
+      { to: '/carrinho', label: 'Carrinho (maquininha)', icone: Smartphone },
       { to: '/painel/vendedores', label: 'Desempenho', icone: Users },
       { to: '/painel/equipe', label: 'Equipe e Metas', icone: Target, soAdmin: true },
     ],

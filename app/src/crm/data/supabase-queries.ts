@@ -12,8 +12,8 @@
  */
 import { supabase } from '@/lib/supabase';
 import type {
-  Campanha, Canal, ColunaFunil, ConversaCompleta, CorEtapa, Etapa, LeadCompleto,
-  LeadDetalhe, Mensagem, MotivoPerda, NovoLeadInput, Vendedor,
+  Campanha, Canal, Cliente, ColunaFunil, ConversaCompleta, CorEtapa, Etapa,
+  LeadCompleto, LeadDetalhe, Mensagem, MotivoPerda, NovoLeadInput, Vendedor,
 } from '@/crm/types';
 import { normalizarTelefone } from '@/lib/telefone';
 import type { AtualizarLeadInput, FiltrosCaixa, FiltrosFunil } from './tipos';
@@ -47,11 +47,108 @@ export async function getCampanhas(): Promise<Campanha[]> {
   return ok(await supabase.from('campanha').select('id, nome, canal').order('nome'));
 }
 
+/**
+ * Todo cliente que já falou com a loja — criado automaticamente por
+ * `receber_mensagem` (ver `identificar_cliente` em `supabase/sql/02-crm.sql`).
+ * Não existe tela de "cadastrar cliente": o pré-cadastro nasce sozinho no
+ * primeiro contato, e essa lista é só a vitrine dele.
+ */
+export async function getClientes(busca?: string): Promise<Cliente[]> {
+  const linhas = ok(await supabase.from('cliente')
+    .select('id, telefone, nome, email, cidade, campanha_origem, primeiro_contato_em')
+    .order('primeiro_contato_em', { ascending: false })) as any[];
+
+  let lista = linhas.map((c): Cliente => ({
+    id: c.id,
+    telefone: c.telefone,
+    nome: c.nome,
+    email: c.email,
+    cidade: c.cidade,
+    campanhaOrigem: c.campanha_origem,
+    primeiroContatoEm: c.primeiro_contato_em,
+  }));
+
+  if (busca?.trim()) {
+    const termo = busca.trim().toLowerCase();
+    const tel = normalizarTelefone(busca);
+    lista = lista.filter((c) =>
+      (c.nome ?? '').toLowerCase().includes(termo) ||
+      (c.email ?? '').toLowerCase().includes(termo) ||
+      (tel != null && c.telefone === tel));
+  }
+
+  return lista;
+}
+
+export interface AtualizarClienteInput {
+  nome?: string | null;
+  email?: string | null;
+  cidade?: string | null;
+}
+
+export async function atualizarCliente(id: string, input: AtualizarClienteInput) {
+  const campos: Record<string, unknown> = {};
+  if (input.nome !== undefined) campos.nome = input.nome;
+  if (input.email !== undefined) campos.email = input.email;
+  if (input.cidade !== undefined) campos.cidade = input.cidade;
+  if (!Object.keys(campos).length) return;
+
+  const { error } = await supabase.from('cliente').update(campos).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Excluir cliente é bloqueado pelo banco (`NO ACTION`) se ele tiver lead,
+ * conversa ou venda — de propósito: apagar quem já comprou ou já está em
+ * atendimento destruiria histórico. O erro do Postgres chega cru; é por isso
+ * que a mensagem é reescrita para algo que a pessoa entende.
+ */
+export async function excluirCliente(id: string) {
+  const { error } = await supabase.from('cliente').delete().eq('id', id);
+  if (error) {
+    if (error.message.includes('foreign key') || error.message.includes('violates')) {
+      throw new Error('Este cliente já tem lead, conversa ou venda vinculada — não pode ser excluído sem apagar isso antes.');
+    }
+    throw new Error(error.message);
+  }
+}
+
+export interface HistoricoCliente { leads: number; conversas: number; vendas: number }
+
+/** Quanto tem pra apagar antes do cliente — o que o diálogo de exclusão mostra. */
+export async function getHistoricoCliente(id: string): Promise<HistoricoCliente> {
+  const [leads, conversas, vendas] = await Promise.all([
+    supabase.from('lead').select('id', { count: 'exact', head: true }).eq('cliente_id', id),
+    supabase.from('conversa').select('id', { count: 'exact', head: true }).eq('cliente_id', id),
+    supabase.from('venda').select('id', { count: 'exact', head: true }).eq('cliente_id', id),
+  ]);
+  return {
+    leads: leads.count ?? 0,
+    conversas: conversas.count ?? 0,
+    vendas: vendas.count ?? 0,
+  };
+}
+
+/**
+ * "Zera tudo de uma vez" — só para quem já pode apagar venda (`eh_gestor()`,
+ * ver `venda_escrita_del`). A ordem importa por causa das FKs `NO ACTION`:
+ * conversa antes de lead (ela referencia lead_id), venda por último antes do
+ * cliente. `mensagem` e `pagamento` somem sozinhos via `ON DELETE CASCADE`.
+ */
+export async function excluirClienteComHistorico(id: string) {
+  for (const tabela of ['conversa', 'lead', 'venda'] as const) {
+    const { error } = await supabase.from(tabela).delete().eq('cliente_id', id);
+    if (error) throw new Error(`ao apagar ${tabela}: ${error.message}`);
+  }
+  await excluirCliente(id);
+}
+
 export async function getCanais(): Promise<Canal[]> {
   return ok(await supabase.from('canal').select('*').eq('ativo', true))
     .map((c: any) => ({
       id: c.id, nome: c.nome, tipo: c.tipo, via: c.via,
       telefone: c.telefone, vendedorId: c.vendedor_id, ativo: c.ativo,
+      statusConexao: c.status_conexao ?? 'desconectado',
     }));
 }
 
@@ -261,7 +358,7 @@ export async function getConversas(f: FiltrosCaixa): Promise<ConversaCompleta[]>
     criadaEm: c.criada_em,
     canal: canais.find((x) => x.id === c.canal_id) ?? {
       id: c.canal_id, nome: c.canal_nome, tipo: c.canal_tipo, via: c.canal_via,
-      telefone: '', vendedorId: null, ativo: true,
+      telefone: '', vendedorId: null, ativo: true, statusConexao: 'conectado',
     },
     cliente: {
       id: c.cliente_id, telefone: c.telefone, nome: c.cliente_nome,
@@ -330,6 +427,17 @@ export async function assumirConversa(conversaId: string, vendedorId: string) {
 
 export async function liberarConversa(conversaId: string) {
   const { error } = await supabase.rpc('liberar_conversa', { p_conversa: conversaId });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Excluir conversa é restrito a admin/sócio pela RLS (`eh_gestor()`, ver
+ * migração `restringir_exclusao_conversa_a_gestor`) — o front só espelha essa
+ * regra para não mostrar um botão que o banco vai recusar. As mensagens vão
+ * junto sozinhas (`ON DELETE CASCADE` em `mensagem.conversa_id`).
+ */
+export async function excluirConversa(conversaId: string) {
+  const { error } = await supabase.from('conversa').delete().eq('id', conversaId);
   if (error) throw new Error(error.message);
 }
 

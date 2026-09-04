@@ -13,7 +13,7 @@ import {
   conversasAbertas, etapas, leads, mensagens, motivosPerda, vendedores,
 } from './mock';
 import type {
-  Campanha, Canal, ColunaFunil, ConversaCompleta, CorEtapa, Etapa, Lead,
+  Campanha, Canal, Cliente, ColunaFunil, ConversaCompleta, CorEtapa, Etapa, Lead,
   LeadCompleto, LeadDetalhe, Mensagem, MotivoPerda, NovoLeadInput, Vendedor,
 } from '@/crm/types';
 import { normalizarTelefone } from '@/lib/telefone';
@@ -61,6 +61,77 @@ export async function getVendedores(): Promise<Vendedor[]> {
 export async function getCampanhas(): Promise<Campanha[]> {
   await atraso();
   return campanhas;
+}
+
+export interface AtualizarClienteInput {
+  nome?: string | null;
+  email?: string | null;
+  cidade?: string | null;
+}
+
+export async function atualizarCliente(id: string, input: AtualizarClienteInput) {
+  await atraso();
+  const alvo = clientes.find((c) => c.id === id);
+  if (!alvo) return;
+  if (input.nome !== undefined) alvo.nome = input.nome;
+  if (input.email !== undefined) alvo.email = input.email;
+  if (input.cidade !== undefined) alvo.cidade = input.cidade;
+}
+
+export async function excluirCliente(id: string) {
+  await atraso();
+  const temHistorico = leads.some((l) => l.clienteId === id)
+    || conversas.some((c) => c.clienteId === id)
+    || compras.some((c) => clienteDaCompra.get(c.id) === id);
+  if (temHistorico) {
+    throw new Error('Este cliente já tem lead, conversa ou venda vinculada — não pode ser excluído sem apagar isso antes.');
+  }
+  const i = clientes.findIndex((c) => c.id === id);
+  if (i >= 0) clientes.splice(i, 1);
+}
+
+export interface HistoricoCliente { leads: number; conversas: number; vendas: number }
+
+export async function getHistoricoCliente(id: string): Promise<HistoricoCliente> {
+  await atraso();
+  return {
+    leads: leads.filter((l) => l.clienteId === id).length,
+    conversas: conversas.filter((c) => c.clienteId === id).length,
+    vendas: compras.filter((c) => clienteDaCompra.get(c.id) === id).length,
+  };
+}
+
+export async function excluirClienteComHistorico(id: string) {
+  await atraso();
+  for (let j = mensagens.length - 1; j >= 0; j--) {
+    const conv = conversas.find((c) => c.id === mensagens[j].conversaId);
+    if (conv?.clienteId === id) mensagens.splice(j, 1);
+  }
+  for (let j = conversas.length - 1; j >= 0; j--) {
+    if (conversas[j].clienteId === id) conversas.splice(j, 1);
+  }
+  for (let j = leads.length - 1; j >= 0; j--) {
+    if (leads[j].clienteId === id) leads.splice(j, 1);
+  }
+  const i = clientes.findIndex((c) => c.id === id);
+  if (i >= 0) clientes.splice(i, 1);
+}
+
+export async function getClientes(busca?: string): Promise<Cliente[]> {
+  await atraso();
+  let lista = [...clientes].sort((a, b) =>
+    new Date(b.primeiroContatoEm).getTime() - new Date(a.primeiroContatoEm).getTime());
+
+  if (busca?.trim()) {
+    const termo = busca.trim().toLowerCase();
+    const tel = normalizarTelefone(busca);
+    lista = lista.filter((c) =>
+      (c.nome ?? '').toLowerCase().includes(termo) ||
+      (c.email ?? '').toLowerCase().includes(termo) ||
+      (tel != null && c.telefone === tel));
+  }
+
+  return lista;
 }
 
 
@@ -522,6 +593,15 @@ export async function liberarConversa(conversaId: string): Promise<void> {
 export async function marcarLida(conversaId: string): Promise<void> {
   const c = conversas.find((x) => x.id === conversaId);
   if (c) c.naoLidas = 0;
+}
+
+export async function excluirConversa(conversaId: string): Promise<void> {
+  await atraso();
+  const i = conversas.findIndex((x) => x.id === conversaId);
+  if (i >= 0) conversas.splice(i, 1);
+  for (let j = mensagens.length - 1; j >= 0; j--) {
+    if (mensagens[j].conversaId === conversaId) mensagens.splice(j, 1);
+  }
 }
 
 /**

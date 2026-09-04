@@ -21,6 +21,7 @@ import * as banco from './supabase-queries';
 export { normalizarTelefone, formatarTelefone, linkWhatsApp } from '@/lib/telefone';
 export { preencherMarcadores, MARCADORES } from './mock-queries';
 export type { AtualizarLeadInput, FiltrosCaixa, FiltrosFunil } from './tipos';
+export type { AtualizarClienteInput, HistoricoCliente } from './mock-queries';
 
 /** A fonte escolhida. Trocar isto é trocar o sistema inteiro de origem. */
 const fonte = MOCK ? mock : (banco as unknown as typeof mock);
@@ -30,6 +31,11 @@ export const getEtapas = fonte.getEtapas;
 export const getMotivosPerda = fonte.getMotivosPerda;
 export const getVendedores = fonte.getVendedores;
 export const getCampanhas = fonte.getCampanhas;
+export const getClientes = fonte.getClientes;
+export const atualizarCliente = fonte.atualizarCliente;
+export const excluirCliente = fonte.excluirCliente;
+export const getHistoricoCliente = fonte.getHistoricoCliente;
+export const excluirClienteComHistorico = fonte.excluirClienteComHistorico;
 export const getCanais = fonte.getCanais;
 
 /* funil */
@@ -57,6 +63,7 @@ export const getConversasDoCliente = fonte.getConversasDoCliente;
 export const getMensagens = fonte.getMensagens;
 export const assumirConversa = fonte.assumirConversa;
 export const liberarConversa = fonte.liberarConversa;
+export const excluirConversa = fonte.excluirConversa;
 export const marcarLida = fonte.marcarLida;
 export const enviarMensagem = fonte.enviarMensagem;
 export const abrirNoMeuNumero = fonte.abrirNoMeuNumero;

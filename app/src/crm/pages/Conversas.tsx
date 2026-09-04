@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowRightLeft, Check, CheckCheck, ExternalLink, Image,
-  Inbox, MessageCircle, Search, Send, Smartphone, Store, User, X,
+  Inbox, MessageCircle, Search, Send, Smartphone, Store, Trash2, User, X,
 } from 'lucide-react';
 import { DialogoMeuNumero } from '@/crm/components/DialogoMeuNumero';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/field';
 import {
-  useAbrirNoMeuNumero, useAssumirConversa, useConversas, useConversasDoCliente,
-  useEnviarMensagem, useMarcarLida, useMensagens, useVendedores,
+  useAbrirNoMeuNumero, useAssumirConversa, useCaixaRealtime, useConversas,
+  useConversasDoCliente, useEnviarMensagem, useExcluirConversa, useMarcarLida,
+  useMensagens, useVendedores,
 } from '@/crm/data/hooks';
 import { formatarTelefone, linkWhatsApp } from '@/crm/data/queries';
 import { useSessao } from '@/store/sessao';
@@ -19,6 +21,7 @@ import type { ConversaCompleta, Mensagem } from '@/crm/types';
 type Aba = 'loja' | 'vendedor';
 
 export default function Conversas() {
+  useCaixaRealtime();
   const { vendedorId, papel } = useSessao();
   const [aba, setAba] = useState<Aba>('loja');
   const [semDono, setSemDono] = useState(false);
@@ -125,7 +128,12 @@ export default function Conversas() {
 
       {/* --------------------------------------------------------- thread -- */}
       {aberta
-        ? <Thread key={aberta.id} conversa={aberta} onIrPara={irPara} />
+        ? (
+          <Thread
+            key={aberta.id} conversa={aberta} onIrPara={irPara}
+            onExcluida={() => setAbertaId(null)}
+          />
+        )
         : <NadaAberto />}
     </div>
   );
@@ -260,12 +268,13 @@ function NadaAberto() {
 /* ═════════════════════════════════════════════════════════════ thread ══ */
 
 function Thread({
-  conversa: c, onIrPara,
+  conversa: c, onIrPara, onExcluida,
 }: {
   conversa: ConversaCompleta;
   onIrPara: (id: string, tipo: 'loja' | 'vendedor') => void;
+  onExcluida: () => void;
 }) {
-  const { vendedorId } = useSessao();
+  const { vendedorId, papel } = useSessao();
   const { data: mensagens, isLoading } = useMensagens(c.id);
   const { data: vendedores } = useVendedores();
   const { data: outras } = useConversasDoCliente(c.clienteId, c.id);
@@ -273,11 +282,17 @@ function Thread({
   const assumir = useAssumirConversa();
   const enviar = useEnviarMensagem();
   const abrirMeuNumero = useAbrirNoMeuNumero();
+  const excluir = useExcluirConversa();
 
   const [texto, setTexto] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const [dialogoAberto, setDialogoAberto] = useState(false);
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
+
+  // Espelha a RLS (`eh_gestor()`) — não é a regra em si, só evita mostrar um
+  // botão que o banco recusaria.
+  const souGestor = papel === 'admin' || papel === 'socio';
 
   const eu = vendedores?.find((v) => v.id === vendedorId);
   const meuCanal = c.canal.vendedorId === vendedorId;
@@ -324,9 +339,11 @@ function Thread({
             <p className="mt-0.5 text-caption tabular-nums text-muted">
               {formatarTelefone(c.telefone)}
               <span className="mx-1.5 text-faint">·</span>
-              {c.canal.tipo === 'loja'
-                ? 'chegou pelo número da loja'
-                : `seu número (${formatarTelefone(c.canal.telefone)})`}
+              {c.canal.via === 'instagram'
+                ? 'chegou pelo Instagram'
+                : c.canal.tipo === 'loja'
+                  ? 'chegou pelo número da loja'
+                  : `seu número (${formatarTelefone(c.canal.telefone)})`}
             </p>
           </div>
 
@@ -341,8 +358,9 @@ function Thread({
             )}
 
             {/* O movimento central: o cliente chegou pela loja, o atendimento
-                acontece do número do vendedor. Só faz sentido na aba da loja. */}
-            {c.canal.tipo === 'loja' && (
+                acontece do número do vendedor. Só faz sentido na aba da loja
+                — e só pra WhatsApp: o cliente do Instagram não tem número. */}
+            {c.canal.tipo === 'loja' && c.canal.via !== 'instagram' && (
               <Button size="sm" variant={semDono ? 'outline' : 'default'}
                       onClick={() => setDialogoAberto(true)}>
                 <ArrowRightLeft className="h-3.5 w-3.5" /> Atender pelo meu número
@@ -356,6 +374,17 @@ function Thread({
                   <ExternalLink className="h-3.5 w-3.5" />
                 </Button>
               </a>
+            )}
+
+            {/* Só admin/sócio — dado de teste ou lixo, não ação do dia a dia. */}
+            {souGestor && (
+              <Button
+                size="sm" variant="ghost" title="Excluir conversa"
+                className="hover:text-negative"
+                onClick={() => setConfirmandoExclusao(true)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
             )}
           </div>
         </div>
@@ -462,6 +491,30 @@ function Thread({
         onEnviar={(t) => void atenderPeloMeuNumero(t)}
         erro={dialogoAberto ? erro : null}
       />
+
+      <Dialog open={confirmandoExclusao} onOpenChange={setConfirmandoExclusao}>
+        <DialogContent className="max-w-sm">
+          <DialogTitle>Excluir conversa com "{c.cliente.nome ?? formatarTelefone(c.telefone)}"</DialogTitle>
+          <DialogDescription>
+            Apaga a conversa e todas as mensagens dela. Não pode ser desfeito.
+          </DialogDescription>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setConfirmandoExclusao(false)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive" size="sm" disabled={excluir.isPending}
+              onClick={async () => {
+                await excluir.mutateAsync(c.id);
+                setConfirmandoExclusao(false);
+                onExcluida();
+              }}
+            >
+              Excluir
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

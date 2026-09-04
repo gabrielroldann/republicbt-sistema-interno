@@ -36,6 +36,8 @@ export interface Cliente {
   id: string;
   telefone: string | null;
   nome: string | null;
+  email?: string | null;
+  cidade?: string | null;
   /** campanha que trouxe a PESSOA, congelada no primeiro toque */
   campanhaOrigem: string | null;
   primeiroContatoEm: string;
@@ -110,14 +112,17 @@ export interface LeadDetalhe extends LeadCompleto {
  *             via em que a conversa aparece ao mesmo tempo no CRM e no
  *             aplicativo dele.
  */
+export type StatusConexaoCanal = 'desconectado' | 'conectando' | 'conectado';
+
 export interface Canal {
   id: string;
   nome: string;
   tipo: 'loja' | 'vendedor';
-  via: 'cloud_api' | 'evolution';
+  via: 'cloud_api' | 'evolution' | 'instagram';
   telefone: string;
   vendedorId: string | null;
   ativo: boolean;
+  statusConexao: StatusConexaoCanal;
 }
 
 export type StatusConversa = 'nova' | 'em_atendimento' | 'resolvida';

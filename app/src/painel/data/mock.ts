@@ -264,13 +264,13 @@ export const vendas: Venda[] = gerarVendas();
  * criativo cortar.
  */
 export const campanhas: Campanha[] = [
-  { id: 'meta:ad:120219876543210', nome: 'Verão 2026 — Raquetes', canal: 'meta', ativa: true, metaAdId: '120219876543210' },
-  { id: 'meta:ad:120219876543211', nome: 'Institucional — Loja Aldeota', canal: 'meta', ativa: true, metaAdId: '120219876543211' },
-  { id: 'meta:ad:120219876543212', nome: 'Retargeting — visitou e não comprou', canal: 'meta', ativa: true, metaAdId: '120219876543212' },
-  { id: 'meta:ad:120219876543213', nome: 'Kit iniciante — vídeo', canal: 'meta', ativa: false, metaAdId: '120219876543213' },
-  { id: 'organico', nome: 'Orgânico', canal: 'organico', ativa: true, metaAdId: null },
-  { id: 'indicacao', nome: 'Indicação', canal: 'indicacao', ativa: true, metaAdId: null },
-  { id: 'nao_rastreado', nome: 'Não rastreado', canal: 'outro', ativa: true, metaAdId: null },
+  { id: 'meta:ad:120219876543210', nome: 'Verão 2026 — Raquetes', canal: 'meta', ativa: true, metaAdId: '120219876543210', codigo: null },
+  { id: 'meta:ad:120219876543211', nome: 'Institucional — Loja Aldeota', canal: 'meta', ativa: true, metaAdId: '120219876543211', codigo: null },
+  { id: 'meta:ad:120219876543212', nome: 'Retargeting — visitou e não comprou', canal: 'meta', ativa: true, metaAdId: '120219876543212', codigo: null },
+  { id: 'meta:ad:120219876543213', nome: 'Kit iniciante — vídeo', canal: 'meta', ativa: false, metaAdId: '120219876543213', codigo: null },
+  { id: 'organico', nome: 'Orgânico', canal: 'organico', ativa: true, metaAdId: null, codigo: null },
+  { id: 'indicacao', nome: 'Indicação', canal: 'indicacao', ativa: true, metaAdId: null, codigo: null },
+  { id: 'nao_rastreado', nome: 'Não rastreado', canal: 'outro', ativa: true, metaAdId: null, codigo: null },
 ];
 
 /** Só as pagas consomem verba — orgânico e indicação não têm gasto. */

@@ -1,8 +1,12 @@
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  atribuirLead, criarLead, getCampanhas, getEtapas, getFunil, getLead,
-  getMotivosPerda, getVendedores, moverLead, type FiltrosFunil,
+  atribuirLead, atualizarCliente, criarLead, excluirCliente,
+  excluirClienteComHistorico, getCampanhas, getClientes, getEtapas, getFunil,
+  getHistoricoCliente, getLead, getMotivosPerda, getVendedores, moverLead,
+  type AtualizarClienteInput, type FiltrosFunil,
 } from './queries';
+import { MOCK, supabase } from '@/lib/supabase';
 import type { NovoLeadInput } from '@/crm/types';
 
 /* Listas que quase não mudam: cacheadas por bastante tempo. */
@@ -15,6 +19,54 @@ export const useVendedores = () =>
   useQuery({ queryKey: ['vendedores'], queryFn: getVendedores, ...fixo });
 export const useCampanhas = () =>
   useQuery({ queryKey: ['campanhas'], queryFn: getCampanhas, ...fixo });
+
+/** A lista de clientes cresce sozinha a cada mensagem nova — atualiza a cada
+ * 30s pra quem deixar a tela aberta ver os que acabaram de chegar. */
+export const useClientes = (busca?: string) =>
+  useQuery({
+    queryKey: ['clientes', busca],
+    queryFn: () => getClientes(busca),
+    refetchInterval: 30_000,
+  });
+
+export function useAtualizarCliente() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string } & AtualizarClienteInput) => {
+      const { id, ...resto } = v;
+      return atualizarCliente(id, resto);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clientes'] }),
+  });
+}
+
+export function useExcluirCliente() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => excluirCliente(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clientes'] }),
+  });
+}
+
+export const useHistoricoCliente = (id: string | null) =>
+  useQuery({
+    queryKey: ['historico-cliente', id],
+    queryFn: () => getHistoricoCliente(id!),
+    enabled: !!id,
+  });
+
+/** "Zera tudo de uma vez" — apaga lead, conversa e venda do cliente, depois o cliente. */
+export function useExcluirClienteComHistorico() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => excluirClienteComHistorico(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['clientes'] });
+      qc.invalidateQueries({ queryKey: ['funil'] });
+      qc.invalidateQueries({ queryKey: ['conversas'] });
+    },
+  });
+}
 
 export const useFunil = (f: FiltrosFunil) =>
   useQuery({ queryKey: ['funil', f], queryFn: () => getFunil(f) });
@@ -132,8 +184,8 @@ export const useLeadDetalhe = (id: string | null) =>
 /* ═════════════════════════════════════════════════ caixa de entrada ════ */
 
 import {
-  abrirNoMeuNumero, assumirConversa, enviarMensagem, getCanais, getConversa,
-  getConversas, getConversasDoCliente, getMensagemPadrao, getMensagens,
+  abrirNoMeuNumero, assumirConversa, enviarMensagem, excluirConversa, getCanais,
+  getConversa, getConversas, getConversasDoCliente, getMensagemPadrao, getMensagens,
   liberarConversa, marcarLida, setMensagemPadrao, type FiltrosCaixa,
 } from './queries';
 
@@ -144,17 +196,15 @@ export const useMensagemPadrao = () =>
   useQuery({ queryKey: ['mensagem-padrao'], queryFn: getMensagemPadrao, ...fixo });
 
 /**
- * A lista atualiza sozinha a cada 8 segundos.
- *
- * Caixa de entrada que só atualiza no F5 é caixa de entrada que ninguém abre:
- * o vendedor não confia numa tela que pode estar velha e vai olhar o celular.
- * Quando o Supabase entrar, isto vira Realtime e o intervalo some.
+ * A lista atualiza por Realtime (ver `useCaixaRealtime`, abaixo) — o
+ * `refetchInterval` que sobrou aqui é só uma rede de segurança para o raro
+ * evento que o WebSocket perder no caminho, não mais o mecanismo principal.
  */
 export const useConversas = (f: FiltrosCaixa) =>
   useQuery({
     queryKey: ['conversas', f],
     queryFn: () => getConversas(f),
-    refetchInterval: 8_000,
+    refetchInterval: 30_000,
   });
 
 export const useConversa = (id: string | null) =>
@@ -172,8 +222,43 @@ export const useMensagens = (conversaId: string | null) =>
     queryKey: ['mensagens', conversaId],
     queryFn: () => getMensagens(conversaId!),
     enabled: !!conversaId,
-    refetchInterval: 8_000,
+    refetchInterval: 30_000,
   });
+
+/**
+ * REALTIME DA CAIXA DE ENTRADA.
+ *
+ * Ouve `INSERT`/`UPDATE` em `conversa` e `mensagem` direto do Postgres (via
+ * `supabase_realtime`, ligado em `ligar_realtime_caixa_de_entrada`) e invalida
+ * as queries certas — sem isso a tela só atualizava no F5 ou esperando o
+ * polling, e o vendedor não pode ficar 8 segundos atrás de uma mensagem que
+ * pede resposta rápida.
+ *
+ * Chamar uma vez, no topo da página da caixa de entrada. Em modo demonstração
+ * (`MOCK`) não há canal para ouvir — o polling do `mock-queries` já resolve.
+ */
+export function useCaixaRealtime() {
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    if (MOCK) return;
+
+    const canal = supabase
+      .channel('caixa-de-entrada')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversa' }, () => {
+        qc.invalidateQueries({ queryKey: ['conversas'] });
+        qc.invalidateQueries({ queryKey: ['conversa'] });
+        qc.invalidateQueries({ queryKey: ['conversas-cliente'] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mensagem' }, () => {
+        qc.invalidateQueries({ queryKey: ['mensagens'] });
+        qc.invalidateQueries({ queryKey: ['conversas'] });
+      })
+      .subscribe();
+
+    return () => { void supabase.removeChannel(canal); };
+  }, [qc]);
+}
 
 function useInvalidarCaixa() {
   const qc = useQueryClient();
@@ -199,6 +284,11 @@ export function useAssumirConversa() {
 export function useLiberarConversa() {
   const invalidar = useInvalidarCaixa();
   return useMutation({ mutationFn: liberarConversa, onSuccess: invalidar });
+}
+
+export function useExcluirConversa() {
+  const invalidar = useInvalidarCaixa();
+  return useMutation({ mutationFn: excluirConversa, onSuccess: invalidar });
 }
 
 export function useEnviarMensagem() {

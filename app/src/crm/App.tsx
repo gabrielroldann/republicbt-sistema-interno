@@ -5,6 +5,7 @@ import { NovoLead } from '@/crm/components/NovoLead';
 import Funil from '@/crm/pages/Funil';
 import ConfigurarFunil from '@/crm/pages/ConfigurarFunil';
 import Conversas from '@/crm/pages/Conversas';
+import Clientes from '@/crm/pages/Clientes';
 import Configuracoes from '@/crm/pages/Configuracoes';
 
 /**
@@ -27,6 +28,7 @@ export default function AreaCrm() {
         <Routes>
           <Route index element={<Funil />} />
           <Route path="conversas" element={<Conversas />} />
+          <Route path="clientes" element={<Clientes />} />
           <Route path="funil/configurar" element={<ConfigurarFunil />} />
           <Route path="configuracoes" element={<Configuracoes />} />
           <Route path="*" element={<Navigate to="." replace />} />

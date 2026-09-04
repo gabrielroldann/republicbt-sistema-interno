@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
-import { ArrowLeft, Check } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input, Select, Campo, Segmentado } from '@/components/ui/field';
 import { registrarVenda } from '@/painel/data/queries';
+import { gravando } from '@/painel/data/escritas';
+import { emitirNotaFiscal } from '@/painel/data/notaFiscal';
 import { useEstoque, useVendedores } from '@/painel/data/hooks';
 import { useFiltros } from '@/painel/store/filtros';
 import { CANAIS_VENDA, FORMAS_PAGAMENTO, type FormaPagamento } from '@/painel/types';
@@ -46,8 +49,16 @@ const schema = z.object({
 
 type Form = z.infer<typeof schema>;
 
+/** O que o painel do lead manda ao abrir esta tela a partir de um "ganho". */
+interface PrefillDoLead {
+  clienteNome?: string;
+  clienteFone?: string;
+  origemLead?: string;
+}
+
 export default function NovaVenda() {
   const navigate = useNavigate();
+  const local = useLocation();
   const qc = useQueryClient();
   const hoje = isoDia(new Date());
   const vendedorLogado = useFiltros((s) => s.vendedorLogado);
@@ -55,7 +66,21 @@ export default function NovaVenda() {
 
   const { data: produtos } = useEstoque();
   const { data: vendedores } = useVendedores();
-  const [salvo, setSalvo] = useState<string | null>(null);
+
+  // Modal central: cobre desde "registrando" até o resultado final (nota
+  // saiu ou não). Substituiu os banners no topo da tela -- ficavam fáceis
+  // de perder de vista num formulário comprido.
+  const [dialogAberto, setDialogAberto] = useState(false);
+  const [fase, setFase] = useState<'venda' | 'nota'>('venda');
+  const [resultado, setResultado] = useState<
+    | { ok: true; cliente: string; chave?: string; url?: string; semNota?: boolean }
+    | { ok: false; cliente: string; mensagem: string }
+    | null
+  >(null);
+
+  // Vindo do CRM ao registrar a venda de um lead "ganho" -- cliente e origem
+  // já preenchidos, só falta o resto (produto, valor, pagamento).
+  const doLead = (local.state ?? null) as PrefillDoLead | null;
 
   const {
     register, handleSubmit, control, setValue, reset, formState: { errors, isSubmitting },
@@ -67,6 +92,9 @@ export default function NovaVenda() {
       formaPagamento: 'pix', parcelas: 1,
       registrarPagamento: true, pagamentoData: hoje, pagamentoValor: 0,
       vendedorId: admin ? '' : vendedorLogado.id,
+      clienteNome: doLead?.clienteNome ?? '',
+      clienteFone: doLead?.clienteFone ?? '',
+      observacoes: doLead?.origemLead ? `Veio do CRM: ${doLead.origemLead}` : '',
     },
   });
 
@@ -103,8 +131,12 @@ export default function NovaVenda() {
     if (p) setValue('precoUnit', p.preco);
   }
 
-  function salvar(f: Form) {
-    registrarVenda({
+  async function salvar(f: Form) {
+    setResultado(null);
+    setFase('venda');
+    setDialogAberto(true);
+
+    const venda = await registrarVenda({
       data: f.data,
       produtoId: f.produtoId,
       vendedorId: f.vendedorId,
@@ -135,7 +167,38 @@ export default function NovaVenda() {
     });
 
     qc.invalidateQueries();
-    setSalvo(f.clienteNome);
+
+    // A venda já está gravada e o estoque já baixou — se a nota falhar daqui
+    // pra frente, isso NÃO desfaz a venda. É um problema separado, que dá pra
+    // reemitir depois. Por isso tudo aqui embaixo é best-effort dentro de
+    // try/catch, nunca impede o vendedor de seguir vendendo.
+    //
+    // Esta tela hoje só registra venda com retirada na loja (presencial) —
+    // por isso sempre emite sem pedir CPF/endereço. "Entrega a domicílio" via
+    // NFC-e automática ainda não está pronta (ver task pendente).
+    if (gravando() && venda?.id) {
+      setFase('nota');
+      try {
+        const r = await emitirNotaFiscal(venda.id, 'homologacao');
+        if (r.resposta?.status === 'autorizado' && r.resposta.chave_nfe) {
+          setResultado({ ok: true, cliente: f.clienteNome, chave: r.resposta.chave_nfe, url: r.resposta.url_danfe });
+        } else {
+          setResultado({
+            ok: false, cliente: f.clienteNome,
+            mensagem: r.resposta?.mensagem_sefaz ?? r.erro ?? 'Falha desconhecida ao emitir a nota.',
+          });
+        }
+      } catch (e) {
+        setResultado({
+          ok: false, cliente: f.clienteNome,
+          mensagem: e instanceof Error ? e.message : 'Falha ao emitir a nota.',
+        });
+      }
+    } else {
+      // Modo demonstração: não existe Edge Function pra chamar, só confirma o registro.
+      setResultado({ ok: true, cliente: f.clienteNome, semNota: true });
+    }
+
     reset({
       data: hoje, quantidade: 1, precoUnit: 0, entrega: 'pendente',
       temTradeIn: false, tradeInValor: 0, tradeInRecebida: false,
@@ -144,7 +207,11 @@ export default function NovaVenda() {
       vendedorId: admin ? '' : vendedorLogado.id,
       clienteNome: '', clienteFone: '', cidade: '', produtoId: '', observacoes: '',
     });
-    setTimeout(() => setSalvo(null), 5000);
+  }
+
+  function fecharDialog() {
+    setDialogAberto(false);
+    setResultado(null);
   }
 
   return (
@@ -156,12 +223,54 @@ export default function NovaVenda() {
         <span className="text-xs text-muted">Preencha e registre. O custo vem do catálogo.</span>
       </div>
 
-      {salvo && (
-        <div className="flex items-center gap-2 rounded-md border border-positive/25 bg-positive-soft px-3 py-2 text-xs text-positive">
-          <Check className="h-3.5 w-3.5" />
-          Venda de <strong className="font-semibold">{salvo}</strong> registrada. Estoque baixado.
-        </div>
-      )}
+      <Dialog open={dialogAberto} onOpenChange={(open) => { if (!open && resultado) fecharDialog(); }}>
+        <DialogContent showClose={!!resultado} className="text-center">
+          {!resultado ? (
+            <div className="flex flex-col items-center gap-3 py-3">
+              <Loader2 className="h-8 w-8 animate-spin text-gold-400" />
+              <DialogTitle>{fase === 'venda' ? 'Registrando a venda…' : 'Emitindo a nota fiscal…'}</DialogTitle>
+              <DialogDescription>Não feche esta janela até terminar.</DialogDescription>
+            </div>
+          ) : resultado.ok ? (
+            <div className="flex flex-col items-center gap-3 py-1">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-positive-soft text-positive">
+                <Check className="h-6 w-6" />
+              </div>
+              <DialogTitle>Venda de {resultado.cliente} registrada</DialogTitle>
+              {resultado.semNota ? (
+                <DialogDescription>Estoque baixado. (Modo demonstração — sem emissão de nota.)</DialogDescription>
+              ) : (
+                <>
+                  <DialogDescription>Estoque baixado e NFC-e autorizada (Homologação).</DialogDescription>
+                  {resultado.chave && (
+                    <p className="break-all rounded bg-elev px-2 py-1 font-mono text-2xs text-faint">
+                      {resultado.chave}
+                    </p>
+                  )}
+                  {resultado.url && (
+                    <a
+                      href={resultado.url} target="_blank" rel="noreferrer"
+                      className="text-caption text-gold-300 underline decoration-dotted"
+                    >
+                      ver DANFE
+                    </a>
+                  )}
+                </>
+              )}
+              <Button className="mt-1 w-full" onClick={fecharDialog}>Fechar</Button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 py-1">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-negative-soft text-negative">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <DialogTitle>Venda de {resultado.cliente} registrada, mas a nota não saiu</DialogTitle>
+              <DialogDescription>{resultado.mensagem}</DialogDescription>
+              <Button variant="outline" className="mt-1 w-full" onClick={fecharDialog}>Fechar</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Secao n={1} titulo="Cliente">
         <Campo label="Nome *"><Input {...register('clienteNome')} placeholder="Juliana Freitas" /></Campo>

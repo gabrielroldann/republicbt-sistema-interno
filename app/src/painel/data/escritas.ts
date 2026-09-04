@@ -155,6 +155,38 @@ export async function gravarArquivarProduto(id: string) {
   await recarregar();
 }
 
+/* ------------------------------------------------------------ campanha -- */
+
+export interface CampanhaParaGravar {
+  nome: string;
+  canal: string;
+  codigo: string | null;
+  ativa: boolean;
+}
+
+/**
+ * `id` é `null` só na criação manual — as automáticas (`meta:ad:...`) e as
+ * de sistema (`loja`, `organico`...) já têm o próprio jeito de nascer, este
+ * caminho é só para cadastro manual (link de bio, campanha combinada por
+ * telefone com o Meta Ads, etc).
+ */
+export async function gravarCampanha(id: string | null, c: CampanhaParaGravar): Promise<string> {
+  if (MOCK) return id ?? '';
+  const campos = { nome: c.nome, canal: c.canal, codigo: c.codigo, ativa: c.ativa };
+  const r = id
+    ? await supabase.from('campanha').update(campos).eq('id', id).select('id').single()
+    : await supabase.from('campanha')
+        .insert({ id: `manual:${crypto.randomUUID().slice(0, 8)}`, ...campos })
+        .select('id').single();
+  if (r.error?.message.includes('idx_campanha_codigo')) {
+    throw new Error(`o código ${c.codigo} já está em uso por outra campanha`);
+  }
+  verificar(r.error);
+  if (!r.data) throw new Error('a campanha não foi gravada');
+  await recarregar();
+  return r.data.id as string;
+}
+
 export async function gravarMovimento(m: {
   produtoId: string; quantidade: number; tipo: string;
   custoUnit?: number | null; frete?: number; observacao?: string | null;

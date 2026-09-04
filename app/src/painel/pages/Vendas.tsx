@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Link } from 'react-router-dom';
-import { Download, Plus, Search } from 'lucide-react';
+import { Download, Link2, Plus, Search } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/field';
@@ -205,6 +205,10 @@ export default function Vendas() {
 
           <Button asChild>
             <Link to="/painel/vendas/nova"><Plus className="h-3.5 w-3.5" /> Nova venda</Link>
+          </Button>
+
+          <Button asChild variant="outline">
+            <Link to="/painel/vendas/link"><Link2 className="h-3.5 w-3.5" /> Link de pagamento</Link>
           </Button>
 
           <Button

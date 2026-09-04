@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Clock, ExternalLink, MessageCircle, ShoppingBag, Star, X,
 } from 'lucide-react';
@@ -10,6 +11,7 @@ import {
 } from '@/crm/data/hooks';
 import { formatarTelefone, linkWhatsApp } from '@/crm/data/queries';
 import { cn, fmtBRL, fmtData } from '@/lib/utils';
+import { useSessao } from '@/store/sessao';
 import type { LeadDetalhe } from '@/crm/types';
 
 /**
@@ -87,6 +89,12 @@ function Conteudo({
   const [titulo, setTitulo] = useState(lead.titulo ?? '');
   const [valor, setValor] = useState(lead.valor?.toString() ?? '');
   const [nome, setNome] = useState(lead.cliente.nome ?? '');
+  const navigate = useNavigate();
+
+  // Quem grava venda é só o gestor -- no dashboard, decisão de produto (não é
+  // gate de segurança: quem trava de verdade é a RLS em `venda`; aqui é só
+  // não oferecer no CRM um botão que o vendedor nunca poderia usar).
+  const gestor = useSessao((s) => s.papel !== 'vendedor');
 
   useEffect(() => {
     setTitulo(lead.titulo ?? '');
@@ -268,10 +276,19 @@ function Conteudo({
         </section>
       </div>
 
-      {/* a ação que fecha o ciclo */}
-      {etapas.find((e) => e.id === lead.etapaId)?.tipo === 'ganho' && (
+      {/* a ação que fecha o ciclo -- só para gestor, é ele quem grava venda */}
+      {gestor && etapas.find((e) => e.id === lead.etapaId)?.tipo === 'ganho' && (
         <footer className="border-t border-line p-4">
-          <Button className="w-full" disabled title="entra junto com a tela de venda">
+          <Button
+            className="w-full"
+            onClick={() => navigate('/painel/vendas/nova', {
+              state: {
+                clienteNome: lead.cliente.nome ?? '',
+                clienteFone: lead.cliente.telefone ?? '',
+                origemLead: [lead.titulo, lead.campanha?.nome].filter(Boolean).join(' — '),
+              },
+            })}
+          >
             Registrar venda
           </Button>
           <p className="mt-1.5 text-center text-caption text-faint">

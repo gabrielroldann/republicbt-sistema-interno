@@ -9,8 +9,8 @@ const DialogClose = DialogPrimitive.Close;
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { showClose?: boolean }
+>(({ className, children, showClose = true, ...props }, ref) => (
   <DialogPrimitive.Portal>
     <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-app/70 backdrop-blur-[1px]" />
     <DialogPrimitive.Content
@@ -23,10 +23,14 @@ const DialogContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded text-faint transition-colors hover:text-ink-2">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Fechar</span>
-      </DialogPrimitive.Close>
+      {/* Escondido enquanto algo está em andamento (ex: emitindo nota) -- não
+          faz sentido deixar fechar no meio e perder o resultado. */}
+      {showClose && (
+        <DialogPrimitive.Close className="absolute right-4 top-4 rounded text-faint transition-colors hover:text-ink-2">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Fechar</span>
+        </DialogPrimitive.Close>
+      )}
     </DialogPrimitive.Content>
   </DialogPrimitive.Portal>
 ));

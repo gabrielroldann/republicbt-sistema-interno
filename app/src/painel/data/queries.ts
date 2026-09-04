@@ -30,8 +30,8 @@ import {
  * verdade; com banco ligado, gravam no Supabase e recarregam a memória.
  */
 import {
-  gravando, gravarArquivarProduto, gravarConta, gravarCustoFixo, gravarCustoMidia,
-  gravarCustoProduto, gravarDespesa, gravarEntrega, gravarExcluirConta,
+  gravando, gravarArquivarProduto, gravarCampanha, gravarConta, gravarCustoFixo,
+  gravarCustoMidia, gravarCustoProduto, gravarDespesa, gravarEntrega, gravarExcluirConta,
   gravarExcluirDespesa, gravarLiquidarConta, gravarMeta, gravarMovimento,
   gravarPagamento, gravarProduto, gravarVenda, gravarVendedor, gravarVendedorAtivo,
 } from './escritas';
@@ -1035,6 +1035,48 @@ export async function getEstoque(): Promise<ItemEstoque[]> {
 export async function getCampanhas(): Promise<Campanha[]> {
   await atraso(80);
   return campanhas;
+}
+
+export interface CampanhaInput {
+  nome: string;
+  canal: Campanha['canal'];
+  /** sem os colchetes — "VERAO26", não "[VERAO26]". Maiúsculo, sem espaço. */
+  codigo: string | null;
+  ativa: boolean;
+}
+
+function validarCampanha(i: CampanhaInput, idAtual?: string) {
+  if (!i.nome.trim()) throw new Error('nome é obrigatório');
+  if (i.codigo) {
+    const cod = i.codigo.trim().toUpperCase();
+    const choca = campanhas.find(
+      (c) => c.id !== idAtual && c.codigo?.toUpperCase() === cod);
+    if (choca) throw new Error(`o código ${cod} já está em uso por "${choca.nome}"`);
+  }
+}
+
+export async function criarCampanha(i: CampanhaInput): Promise<string> {
+  await atraso();
+  validarCampanha(i);
+  const codigo = i.codigo?.trim().toUpperCase() || null;
+  if (gravando()) return gravarCampanha(null, { ...i, nome: i.nome.trim(), codigo });
+
+  const id = `manual:${Date.now()}`;
+  campanhas.push({ id, nome: i.nome.trim(), canal: i.canal, ativa: i.ativa, metaAdId: null, codigo });
+  return id;
+}
+
+export async function atualizarCampanha(id: string, i: CampanhaInput): Promise<void> {
+  await atraso();
+  validarCampanha(i, id);
+  const codigo = i.codigo?.trim().toUpperCase() || null;
+  if (gravando()) {
+    await gravarCampanha(id, { ...i, nome: i.nome.trim(), codigo });
+    return;
+  }
+  const c = campanhas.find((x) => x.id === id);
+  if (!c) throw new Error('campanha não encontrada');
+  Object.assign(c, { nome: i.nome.trim(), canal: i.canal, ativa: i.ativa, codigo });
 }
 
 export async function getCustoMidia(mes: string): Promise<CustoMidia[]> {

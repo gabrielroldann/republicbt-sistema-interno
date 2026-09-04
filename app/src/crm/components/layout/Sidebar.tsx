@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   KanbanSquare, LogOut, MessageSquare, PanelLeft, PanelLeftClose, Plus, Settings,
-  SlidersHorizontal, Users, type LucideIcon,
+  ShoppingCart, SlidersHorizontal, Users, type LucideIcon,
 } from 'lucide-react';
 import { MOCK } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -30,12 +30,15 @@ const grupos: { titulo: string; itens: Item[] }[] = [
     itens: [
       { to: '/crm/conversas', label: 'Conversas', icone: MessageSquare },
       { to: '/crm', label: 'Funil', icone: KanbanSquare },
+      // Fora de `/crm/*` de propósito (ver App.tsx) — tela cheia, sem menu,
+      // pensada para o celular do vendedor na loja.
+      { to: '/carrinho', label: 'Carrinho (maquininha)', icone: ShoppingCart },
     ],
   },
   {
     titulo: 'Cadastro',
     itens: [
-      { to: '/crm/clientes', label: 'Clientes', icone: Users, emBreve: 'em breve' },
+      { to: '/crm/clientes', label: 'Clientes', icone: Users },
     ],
   },
   {

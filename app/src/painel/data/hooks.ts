@@ -103,6 +103,33 @@ export function useCampanhas() {
   return useQuery({ queryKey: ['campanhas'], queryFn: q.getCampanhas, staleTime: 600_000 });
 }
 
+function useInvalidarCampanhas() {
+  const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: ['campanhas'] });
+    qc.invalidateQueries({ queryKey: ['retorno-campanhas'] });
+  };
+}
+
+export function useCriarCampanha() {
+  const invalidar = useInvalidarCampanhas();
+  return useMutation({
+    mutationFn: (i: q.CampanhaInput) => q.criarCampanha(i),
+    onSuccess: invalidar,
+  });
+}
+
+export function useAtualizarCampanha() {
+  const invalidar = useInvalidarCampanhas();
+  return useMutation({
+    mutationFn: (v: { id: string } & q.CampanhaInput) => {
+      const { id, ...resto } = v;
+      return q.atualizarCampanha(id, resto);
+    },
+    onSuccess: invalidar,
+  });
+}
+
 /** Por competência mensal, como o gasto de mídia é orçado e cobrado. */
 export function useRetornoCampanhas(mes: string) {
   return useQuery({

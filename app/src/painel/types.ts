@@ -253,6 +253,8 @@ export interface Campanha {
   ativa: boolean;
   /** o id do ANÚNCIO na Meta. É o que o webhook entrega — não o da campanha. */
   metaAdId: string | null;
+  /** o código entre colchetes que rastreia link de bio/story sem anúncio pago — ex.: "[VERAO26]". */
+  codigo: string | null;
 }
 
 /** Quanto se gastou numa campanha, numa competência. */

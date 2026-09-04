@@ -1,15 +1,23 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Info, TrendingDown, TrendingUp } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { AlertTriangle, Info, Pencil, Plus, TrendingDown, TrendingUp } from 'lucide-react';
 import {
   Card, CardDescription, CardHeader, CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Input, Select } from '@/components/ui/field';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog, DialogContent, DialogDescription, DialogTitle,
+} from '@/components/ui/dialog';
+import { Campo, Input, Select } from '@/components/ui/field';
 import { KpiCard } from '@/painel/components/KpiCard';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useCompetencias, useRetornoCampanhas, useSalvarCustoMidia } from '@/painel/data/hooks';
+import {
+  useCompetencias, useCriarCampanha, useAtualizarCampanha, useRetornoCampanhas,
+  useSalvarCustoMidia,
+} from '@/painel/data/hooks';
 import { cn, fmtBRL, fmtMesAno, fmtNum, fmtPct, mesRef } from '@/lib/utils';
-import type { RetornoCampanha } from '@/painel/types';
+import type { Campanha, RetornoCampanha } from '@/painel/types';
 
 /**
  * ONDE O DINHEIRO DE ANÚNCIO VIROU VENDA.
@@ -26,6 +34,7 @@ import type { RetornoCampanha } from '@/painel/types';
 export default function Campanhas() {
   const { data: competencias } = useCompetencias();
   const [mes, setMes] = useState(mesRef());
+  const [dialogo, setDialogo] = useState<'criar' | Campanha | null>(null);
 
   useEffect(() => {
     if (competencias?.length && !competencias.includes(mes)) setMes(competencias[0]);
@@ -55,12 +64,17 @@ export default function Campanhas() {
             <strong className="text-ink-2">O gasto você digita na coluna “Gasto”.</strong>
           </p>
         </div>
-        <Select data-seletor="mes" value={mes} onChange={(e) => setMes(e.target.value)}
-                className="w-40">
-          {(competencias ?? [mes]).map((m) => (
-            <option key={m} value={m}>{fmtMesAno(m)}</option>
-          ))}
-        </Select>
+        <div className="flex items-center gap-2">
+          <Select data-seletor="mes" value={mes} onChange={(e) => setMes(e.target.value)}
+                  className="w-40">
+            {(competencias ?? [mes]).map((m) => (
+              <option key={m} value={m}>{fmtMesAno(m)}</option>
+            ))}
+          </Select>
+          <Button size="sm" onClick={() => setDialogo('criar')}>
+            <Plus className="h-3.5 w-3.5" /> Nova campanha
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -126,6 +140,7 @@ export default function Campanhas() {
                     key={l.campanha.id} l={l}
                     onGasto={(gasto) =>
                       salvar.mutate({ campanhaId: l.campanha.id, mes, gasto })}
+                    onEditar={() => setDialogo(l.campanha)}
                   />
                 ))}
                 {(linhas ?? []).length === 0 && (
@@ -152,13 +167,17 @@ export default function Campanhas() {
           </p>
         </div>
       </Card>
+
+      <DialogoCampanha estado={dialogo} onFechar={() => setDialogo(null)} />
     </div>
   );
 }
 
 /* ─────────────────────────────────────────────────────────────────────── */
 
-function Linha({ l, onGasto }: { l: RetornoCampanha; onGasto: (g: number) => void }) {
+function Linha({
+  l, onGasto, onEditar,
+}: { l: RetornoCampanha; onGasto: (g: number) => void; onEditar: () => void }) {
   const paga = l.campanha.canal === 'meta';
   const ruim = paga && l.gasto > 0 && l.sobra < 0;
 
@@ -169,10 +188,19 @@ function Linha({ l, onGasto }: { l: RetornoCampanha; onGasto: (g: number) => voi
       className={cn('transition-colors', ruim ? 'bg-negative-soft/40' : 'hover:bg-elev/50')}
     >
       <td className="px-5 py-2.5">
-        <div className="flex items-center gap-2">
+        <div className="group flex items-center gap-2">
           <span className="truncate font-medium text-ink">{l.campanha.nome}</span>
           {!l.campanha.ativa && <Badge variant="neutral">pausada</Badge>}
+          <button
+            onClick={onEditar} title="Editar campanha"
+            className="text-faint opacity-0 transition-opacity hover:text-ink-2 group-hover:opacity-100"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
         </div>
+        {l.campanha.codigo && (
+          <div className="text-2xs text-faint">código [{l.campanha.codigo}]</div>
+        )}
         {l.campanha.metaAdId && (
           <div className="text-2xs text-faint">anúncio {l.campanha.metaAdId}</div>
         )}
@@ -228,5 +256,121 @@ function Linha({ l, onGasto }: { l: RetornoCampanha; onGasto: (g: number) => voi
         </span>
       </td>
     </tr>
+  );
+}
+
+/* -------------------------------------------------- cadastro de campanha -- */
+
+interface FormCampanha {
+  nome: string;
+  canal: Campanha['canal'];
+  codigo: string;
+  ativa: boolean;
+}
+
+const CANAIS: { valor: Campanha['canal']; label: string }[] = [
+  { valor: 'meta', label: 'Meta (Instagram/Facebook)' },
+  { valor: 'google', label: 'Google' },
+  { valor: 'organico', label: 'Orgânico' },
+  { valor: 'indicacao', label: 'Indicação' },
+  { valor: 'loja', label: 'Loja física' },
+  { valor: 'site', label: 'Site' },
+  { valor: 'outro', label: 'Outro' },
+];
+
+/**
+ * Um diálogo só, pros dois casos — criar (`estado === 'criar'`) e editar
+ * (`estado` é a própria campanha). O "código" é o que faz o rastreio sem
+ * anúncio pago: qualquer mensagem que chegar com `[CÓDIGO]` no texto vira
+ * essa campanha sozinha (ver `campanha_do_referral`, em `02-crm.sql`).
+ */
+function DialogoCampanha({
+  estado, onFechar,
+}: { estado: 'criar' | Campanha | null; onFechar: () => void }) {
+  const criar = useCriarCampanha();
+  const atualizar = useAtualizarCampanha();
+  const [erro, setErro] = useState<string | null>(null);
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormCampanha>();
+
+  const editando = estado !== 'criar' ? estado : null;
+  const aberto = estado != null;
+
+  useEffect(() => {
+    if (estado === 'criar') {
+      reset({ nome: '', canal: 'meta', codigo: '', ativa: true });
+    } else if (estado) {
+      reset({
+        nome: estado.nome, canal: estado.canal,
+        codigo: estado.codigo ?? '', ativa: estado.ativa,
+      });
+    }
+  }, [estado, reset]);
+
+  async function salvar(v: FormCampanha) {
+    setErro(null);
+    const input = {
+      nome: v.nome, canal: v.canal, codigo: v.codigo.trim() || null, ativa: v.ativa,
+    };
+    try {
+      if (editando) await atualizar.mutateAsync({ id: editando.id, ...input });
+      else await criar.mutateAsync(input);
+      onFechar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'não deu para salvar');
+    }
+  }
+
+  function fechar() {
+    setErro(null);
+    onFechar();
+  }
+
+  const salvando = criar.isPending || atualizar.isPending;
+
+  return (
+    <Dialog open={aberto} onOpenChange={(v) => !v && fechar()}>
+      <DialogContent>
+        <DialogTitle>{editando ? 'Editar campanha' : 'Nova campanha'}</DialogTitle>
+        <DialogDescription>
+          {editando
+            ? 'Campanhas criadas automaticamente por anúncio real também podem ser renomeadas aqui.'
+            : 'Para rastrear um link de bio ou story sem anúncio pago — não precisa de anúncio da Meta rodando.'}
+        </DialogDescription>
+
+        <form onSubmit={handleSubmit(salvar)} className="mt-4 space-y-3">
+          <Campo label="Nome">
+            <Input {...register('nome', { required: true })} placeholder="Ex.: Verão 26 — Raquetes" />
+            {errors.nome && <p className="mt-1 text-2xs text-negative">obrigatório</p>}
+          </Campo>
+
+          <Campo label="Canal">
+            <Select {...register('canal')}>
+              {CANAIS.map((c) => <option key={c.valor} value={c.valor}>{c.label}</option>)}
+            </Select>
+          </Campo>
+
+          <Campo
+            label="Código de rastreio (opcional)"
+            hint='Sem colchetes — "VERAO26", não "[VERAO26]". Quem mandar mensagem com esse código no texto vira lead desta campanha automaticamente.'
+          >
+            <Input {...register('codigo')} placeholder="VERAO26" className="uppercase" />
+          </Campo>
+
+          <Campo label="Status">
+            <Select {...register('ativa', { setValueAs: (v) => v === 'true' })}>
+              <option value="true">Ativa</option>
+              <option value="false">Pausada</option>
+            </Select>
+          </Campo>
+
+          {erro && <p className="text-2xs text-negative">{erro}</p>}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={fechar}>Cancelar</Button>
+            <Button type="submit" size="sm" disabled={salvando}>Salvar</Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

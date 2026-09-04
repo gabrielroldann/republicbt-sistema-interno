@@ -18,6 +18,7 @@ import { useSessao, type Area } from '@/store/sessao';
  */
 const AreaPainel = lazy(() => import('@/painel/App'));
 const AreaCrm = lazy(() => import('@/crm/App'));
+const Carrinho = lazy(() => import('@/pages/Carrinho'));
 
 export default function App() {
   const {
@@ -65,6 +66,13 @@ export default function App() {
         <Route path="/crm/*" element={
           <SomenteArea area="crm" permitidas={areas}><AreaCrm /></SomenteArea>
         } />
+
+        {/*
+          Fora de `painel`/`crm` de propósito: é a tela que o vendedor instala
+          no celular (ver `public/manifest.json`), sem o menu lateral do painel
+          — e qualquer vendedor ativo pode vender, então não tem `SomenteArea`.
+        */}
+        <Route path="/carrinho" element={<Carrinho />} />
 
         <Route path="*" element={<Navigate to={`/${areaInicial()}`} replace />} />
       </Routes>

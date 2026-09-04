@@ -1,9 +1,12 @@
-import type { CSSProperties } from 'react';
-import { Check } from 'lucide-react';
+import { useState, type CSSProperties } from 'react';
+import { Check, Smartphone } from 'lucide-react';
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useCanais } from '@/crm/data/hooks';
+import { useSessao } from '@/store/sessao';
 import { cn } from '@/lib/utils';
 import { LISTA_TEMAS, type Tema } from '@/tema/temas';
 import { useTema } from '@/tema/useTema';
@@ -108,6 +111,8 @@ export default function Configuracoes() {
           </p>
         </header>
 
+        <MeuNumero />
+
         <Card>
           <CardHeader>
             <div>
@@ -206,5 +211,70 @@ export default function Configuracoes() {
         </Card>
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------- meu número ---- */
+
+/**
+ * "Atender pelo meu número" (em `Conversas.tsx`) só funciona se existir um
+ * `canal` do tipo `vendedor` ligado a este usuário — e hoje NENHUM vendedor
+ * tem isso, para ninguém. Esta seção mostra esse estado com honestidade e
+ * explica por quê, em vez de deixar a pessoa descobrir o problema clicando
+ * num botão que devolve um erro.
+ *
+ * O pareamento de verdade (QR code) depende da Evolution API e do n8n, que
+ * ainda não existem — ver `PLANO-CRM-DISTRIBUICAO.md`. Quando existirem, o
+ * botão "Conectar" chama uma Edge Function que fala com a Evolution API e
+ * grava o `canal` — sem precisar mudar mais nada nesta tela.
+ */
+function MeuNumero() {
+  const { vendedorId } = useSessao();
+  const { data: canais } = useCanais();
+  const [avisoAberto, setAvisoAberto] = useState(false);
+
+  const meuCanal = canais?.find((c) => c.tipo === 'vendedor' && c.vendedorId === vendedorId);
+  const conectado = meuCanal?.statusConexao === 'conectado';
+
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <CardTitle>Meu número (WhatsApp)</CardTitle>
+          <CardDescription>
+            O número pessoal que você usa para atender — é o que liga o botão
+            "Atender pelo meu número", na caixa de entrada.
+          </CardDescription>
+        </div>
+        <Badge variant={conectado ? 'positive' : 'neutral'}>
+          {conectado ? 'Conectado' : 'Não conectado'}
+        </Badge>
+      </CardHeader>
+
+      <CardContent className="space-y-3">
+        {conectado ? (
+          <div className="flex items-center gap-2.5 text-body text-ink-2">
+            <Smartphone className="h-4 w-4 text-positive" />
+            {meuCanal?.telefone ?? 'número conectado'}
+          </div>
+        ) : (
+          <>
+            <p className="text-body text-ink-2">
+              Você ainda não tem um número conectado ao CRM. Sem isso, quem
+              clicar em "Atender pelo meu número" numa conversa recebe um
+              aviso de erro em vez de conseguir responder.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={() => setAvisoAberto(true)}>Conectar meu número</Button>
+              {avisoAberto && (
+                <span className="text-caption text-attention">
+                  Ainda não dá — falta subir a Evolution API e o n8n que fazem essa conexão de verdade.
+                </span>
+              )}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

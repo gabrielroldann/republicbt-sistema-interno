@@ -130,7 +130,7 @@ export async function carregar(forcar = false): Promise<void> {
 
   repor(campanhas, ok<any[]>(rCampanhas).map((c) => ({
     id: c.id, nome: c.nome, canal: c.canal, ativa: c.ativa,
-    metaAdId: c.meta_ad_id ?? null,
+    metaAdId: c.meta_ad_id ?? null, codigo: c.codigo ?? null,
   })));
 
   // `custo_midia` é por DIA no banco e por MÊS no painel: a Meta cobra diário,

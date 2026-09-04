@@ -19,6 +19,14 @@ import type { Papel } from '@/painel/types';
  */
 export type Area = 'painel' | 'crm';
 
+/**
+ * O papel como o BANCO guarda (`vendedor.papel`), com os três valores reais.
+ * Diferente de `Papel` (em `@/painel/types`), que já vem colapsado para o
+ * painel financeiro tratar admin e sócio como a mesma coisa — aqui, no CRM,
+ * a distinção entre admin e sócio importa (ex.: quem pode excluir conversa).
+ */
+export type PapelBanco = 'admin' | 'socio' | 'vendedor';
+
 /** Papel do banco: 'admin' e 'socio' veem os dois; 'vendedor' só o CRM. */
 export function areasDoPapel(papel: string): Area[] {
   return papel === 'vendedor' ? ['crm'] : ['painel', 'crm'];
@@ -36,7 +44,7 @@ interface Sessao {
 
   vendedorId: string;
   nome: string;
-  papel: Papel | 'vendedor';
+  papel: PapelBanco;
   areas: Area[];
 
   iniciar: () => void;
@@ -98,7 +106,7 @@ export const useSessao = create<Sessao>((set, get) => ({
         return;
       }
 
-      const papel = data.papel as Papel | 'vendedor';
+      const papel = data.papel as PapelBanco;
 
       // O painel financeiro tem seu próprio filtro de papel, herdado de quando
       // era um app sozinho. Mantido em sincronia aqui para não existirem duas

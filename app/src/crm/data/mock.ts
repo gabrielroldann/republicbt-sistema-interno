@@ -139,11 +139,11 @@ for (const { etapa, qtd } of DISTRIBUICAO) {
 
 export const canais: Canal[] = [
   { id: 'loja', nome: 'Republic BT', tipo: 'loja', via: 'cloud_api',
-    telefone: '5585999990000', vendedorId: null, ativo: true },
+    telefone: '5585999990000', vendedorId: null, ativo: true, statusConexao: 'conectado' },
   { id: 'vend:v1', nome: 'Gabriel', tipo: 'vendedor', via: 'evolution',
-    telefone: '5585988881111', vendedorId: 'v1', ativo: true },
+    telefone: '5585988881111', vendedorId: 'v1', ativo: true, statusConexao: 'conectado' },
   { id: 'vend:v2', nome: 'Sócio B', tipo: 'vendedor', via: 'evolution',
-    telefone: '5585988882222', vendedorId: 'v2', ativo: true },
+    telefone: '5585988882222', vendedorId: 'v2', ativo: true, statusConexao: 'conectado' },
 ];
 
 const horasAtras = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();

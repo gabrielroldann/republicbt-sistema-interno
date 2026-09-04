@@ -31,6 +31,7 @@ export function normalizarTelefone(bruto: string): string | null {
 
 export function formatarTelefone(e164: string | null): string {
   if (!e164) return '—';
+  if (e164.startsWith('ig:')) return 'Instagram';
   const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(e164);
   return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
 }
@@ -43,7 +44,7 @@ export function formatarTelefone(e164: string | null): string {
  * dois lugares — é o mesmo WhatsApp, espelhado.
  */
 export function linkWhatsApp(telefone: string | null, texto?: string): string | null {
-  if (!telefone) return null;
+  if (!telefone || telefone.startsWith('ig:')) return null;
   const t = texto ? `?text=${encodeURIComponent(texto)}` : '';
   return `https://wa.me/${telefone}${t}`;
 }
