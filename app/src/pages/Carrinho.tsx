@@ -4,15 +4,15 @@ import {
   CreditCard, Loader2, LogOut, Minus, Plus, RefreshCw, Search, ShoppingCart, Trash2, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/field';
+import { Campo, Input } from '@/components/ui/field';
 import { useEstoque } from '@/painel/data/hooks';
 import { useSessao } from '@/store/sessao';
 import { fmtBRL } from '@/lib/utils';
 import { CATEGORIAS, type Categoria } from '@/painel/types';
 import {
   adicionarItem, cancelarCarrinho, definirQuantidade,
-  enviarParaMaquininha, esvaziarCarrinho, getOuCriarCarrinhoAberto, removerItem,
-  simularPagamento, verificarPagamento, type Carrinho as TCarrinho,
+  enviarParaMaquininha, esvaziarCarrinho, getOuCriarCarrinhoAberto, identificarClienteDoCarrinho,
+  removerItem, simularPagamento, verificarPagamento, type Carrinho as TCarrinho,
 } from '@/painel/data/carrinho';
 
 /**
@@ -34,6 +34,8 @@ export default function Carrinho() {
   const [categoria, setCategoria] = useState<Categoria | 'todas'>('todas');
   const [erro, setErro] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
+  const [clienteNome, setClienteNome] = useState('');
+  const [clienteFone, setClienteFone] = useState('');
 
   const { data: produtos } = useEstoque();
 
@@ -111,7 +113,15 @@ export default function Carrinho() {
   });
 
   const mEnviar = useMutation({
-    mutationFn: () => enviarParaMaquininha(carrinho!.id),
+    mutationFn: async () => {
+      // Identifica o cliente pelo telefone antes de mandar pra maquininha —
+      // mesmo RPC que a Nova Venda usa. Sem isso a venda nasce sem dono, e aí
+      // só dá pra linkar ao CRM manualmente depois.
+      if (clienteFone.trim()) {
+        await identificarClienteDoCarrinho(carrinho!.id, clienteFone, clienteNome.trim() || null);
+      }
+      await enviarParaMaquininha(carrinho!.id);
+    },
     onSuccess: invalidar,
     onError: (e) => setErro(e instanceof Error ? e.message : 'não deu para enviar para a maquininha'),
   });
@@ -389,6 +399,30 @@ export default function Carrinho() {
         </>
       )}
 
+      {/* dados do cliente — antes de mandar pra maquininha, pra já nascer linkado ao CRM */}
+      {!enviando && carrinho.itens.length > 0 && (
+        <section className="mx-4 mt-3 rounded-md border border-line bg-elev p-3.5">
+          <p className="text-2xs font-semibold uppercase tracking-wide text-faint">Cliente</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Campo label="Nome" className="col-span-2">
+              <Input
+                value={clienteNome}
+                onChange={(e) => setClienteNome(e.target.value)}
+                placeholder="opcional se já for cadastrado"
+              />
+            </Campo>
+            <Campo label="Telefone *" className="col-span-2">
+              <Input
+                value={clienteFone}
+                onChange={(e) => setClienteFone(e.target.value)}
+                placeholder="(85) 9xxxx-xxxx"
+                inputMode="tel"
+              />
+            </Campo>
+          </div>
+        </section>
+      )}
+
       {/* barra fixa de total + ação principal */}
       {!enviando && carrinho.itens.length > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-elev px-4 py-3">
@@ -400,7 +434,7 @@ export default function Carrinho() {
             <Button
               size="default"
               className="flex-1"
-              disabled={mEnviar.isPending}
+              disabled={mEnviar.isPending || !clienteFone.trim()}
               onClick={() => mEnviar.mutate()}
             >
               {mEnviar.isPending

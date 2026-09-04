@@ -27,6 +27,7 @@ export interface Carrinho {
   vendedorId: string;
   status: StatusCarrinho;
   cieloOrderId: string | null;
+  clienteId: string | null;
   itens: ItemCarrinho[];
 }
 
@@ -42,15 +43,18 @@ export async function getOuCriarCarrinhoAberto(vendedorId: string): Promise<Carr
 
   const { data, error } = await supabase.from('carrinho')
     .insert({ vendedor_id: vendedorId, status: 'aberto' })
-    .select('id, vendedor_id, status, cielo_order_id').single();
+    .select('id, vendedor_id, status, cielo_order_id, cliente_id').single();
   if (error) throw new Error(error.message);
 
-  return { id: data.id, vendedorId: data.vendedor_id, status: data.status, cieloOrderId: null, itens: [] };
+  return {
+    id: data.id, vendedorId: data.vendedor_id, status: data.status,
+    cieloOrderId: null, clienteId: data.cliente_id, itens: [],
+  };
 }
 
 async function buscarCarrinhoAberto(vendedorId: string): Promise<Carrinho | null> {
   const { data: carrinho, error } = await supabase.from('carrinho')
-    .select('id, vendedor_id, status, cielo_order_id')
+    .select('id, vendedor_id, status, cielo_order_id, cliente_id')
     .eq('vendedor_id', vendedorId)
     .in('status', ['aberto', 'enviado_para_maquininha'])
     .order('criado_em', { ascending: false })
@@ -59,16 +63,16 @@ async function buscarCarrinhoAberto(vendedorId: string): Promise<Carrinho | null
   if (!carrinho) return null;
 
   return { ...(await carregarItens(carrinho.id)), id: carrinho.id, vendedorId: carrinho.vendedor_id,
-    status: carrinho.status, cieloOrderId: carrinho.cielo_order_id };
+    status: carrinho.status, cieloOrderId: carrinho.cielo_order_id, clienteId: carrinho.cliente_id };
 }
 
 /** Recarrega um carrinho específico pelo id — usado ao "verificar pagamento". */
 export async function buscarCarrinho(carrinhoId: string): Promise<Carrinho> {
   const { data: c, error } = await supabase.from('carrinho')
-    .select('id, vendedor_id, status, cielo_order_id').eq('id', carrinhoId).single();
+    .select('id, vendedor_id, status, cielo_order_id, cliente_id').eq('id', carrinhoId).single();
   if (error) throw new Error(error.message);
   return { ...(await carregarItens(c.id)), id: c.id, vendedorId: c.vendedor_id,
-    status: c.status, cieloOrderId: c.cielo_order_id };
+    status: c.status, cieloOrderId: c.cielo_order_id, clienteId: c.cliente_id };
 }
 
 async function carregarItens(carrinhoId: string): Promise<{ itens: ItemCarrinho[] }> {
@@ -132,6 +136,29 @@ export async function esvaziarCarrinho(carrinhoId: string): Promise<void> {
 export async function cancelarCarrinho(carrinhoId: string): Promise<void> {
   const { error } = await supabase.from('carrinho').update({ status: 'cancelado' }).eq('id', carrinhoId);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Identifica o cliente pelo telefone — mesmo RPC que `gravarVenda` (Nova
+ * Venda) e o webhook do WhatsApp usam. Um caminho só pra achar-ou-criar
+ * cliente: assim a mesma pessoa nunca vira dois cadastros por ter comprado
+ * por telas diferentes.
+ */
+export async function identificarClienteDoCarrinho(
+  carrinhoId: string, telefone: string, nome: string | null,
+): Promise<string> {
+  const { data, error } = await supabase.rpc('identificar_cliente', {
+    p_telefone_bruto: telefone,
+    p_nome: nome,
+  });
+  if (error) throw new Error(error.message);
+
+  const clienteId = data as string;
+  const { error: eUpdate } = await supabase.from('carrinho')
+    .update({ cliente_id: clienteId }).eq('id', carrinhoId);
+  if (eUpdate) throw new Error(eUpdate.message);
+
+  return clienteId;
 }
 
 /**
