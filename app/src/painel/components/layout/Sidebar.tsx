@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import {
-  BarChart3, Boxes, LayoutDashboard, LogOut, Megaphone, PanelLeft, PanelLeftClose,
+  BarChart3, Boxes, Inbox, LayoutDashboard, LogOut, Megaphone, PanelLeft, PanelLeftClose,
   Plus, Receipt, Settings, ShieldCheck, ShoppingCart, Smartphone, Target, User, Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -29,6 +29,7 @@ const grupos: { titulo: string; itens: Item[] }[] = [
       // painel e precisa abrir rápido, num computador ou testando.
       { to: '/carrinho', label: 'Carrinho (maquininha)', icone: Smartphone },
       { to: '/painel/vendedores', label: 'Desempenho', icone: Users },
+      { to: '/painel/pendencias', label: 'Pendências', icone: Inbox, soAdmin: true },
       { to: '/painel/equipe', label: 'Equipe e Metas', icone: Target, soAdmin: true },
     ],
   },

@@ -6,6 +6,7 @@ import Overview from '@/painel/pages/Overview';
 import Vendas from '@/painel/pages/Vendas';
 import NovaVenda from '@/painel/pages/NovaVenda';
 import LinkPagamento from '@/painel/pages/LinkPagamento';
+import Pendencias from '@/painel/pages/Pendencias';
 import Equipe from '@/painel/pages/Equipe';
 import Vendedores from '@/painel/pages/Vendedores';
 import VendedorDetalhe from '@/painel/pages/VendedorDetalhe';
@@ -39,6 +40,7 @@ export default function AreaPainel() {
         <Route path="vendas" element={<Vendas />} />
         <Route path="vendas/nova" element={<NovaVenda />} />
         <Route path="vendas/link" element={<LinkPagamento />} />
+        <Route path="pendencias" element={<SomenteAdmin><Pendencias /></SomenteAdmin>} />
         <Route path="vendedores" element={<Vendedores />} />
         <Route path="vendedores/:id" element={<VendedorDetalhe />} />
         <Route path="equipe" element={<SomenteAdmin><Equipe /></SomenteAdmin>} />
