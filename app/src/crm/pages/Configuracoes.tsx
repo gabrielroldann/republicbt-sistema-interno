@@ -5,6 +5,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { TrocarSenha } from '@/components/TrocarSenha';
 import { useCanais } from '@/crm/data/hooks';
 import { useSessao } from '@/store/sessao';
 import { cn } from '@/lib/utils';
@@ -112,6 +113,7 @@ export default function Configuracoes() {
         </header>
 
         <MeuNumero />
+        <TrocarSenha />
 
         <Card>
           <CardHeader>

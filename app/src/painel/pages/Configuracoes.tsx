@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import { Check } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { TrocarSenha } from '@/components/TrocarSenha';
 import { cn } from '@/lib/utils';
 import { LISTA_TEMAS, type Tema } from '@/tema/temas';
 import { useTema } from '@/tema/useTema';
@@ -90,6 +91,8 @@ export default function Configuracoes() {
 
   return (
     <div className="stagger space-y-5">
+      <TrocarSenha />
+
       <Card>
         <CardHeader>
           <div>
