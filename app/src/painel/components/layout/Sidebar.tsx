@@ -11,6 +11,7 @@ import { useFiltros } from '@/painel/store/filtros';
 import { vendedores } from '@/painel/data/mock';
 import { contarPendencias } from '@/painel/data/pendencias';
 import { Select } from '@/components/ui/field';
+import { useSessao } from '@/store/sessao';
 
 interface Item {
   to: string;
@@ -18,6 +19,13 @@ interface Item {
   icone: LucideIcon;
   /** Módulos financeiros só existem para sócio/admin. */
   soAdmin?: boolean;
+  /**
+   * Mais estrito que `soAdmin`: só admin de VERDADE, não sócio. A tabela
+   * `vendedor` (Equipe, Usuários) só aceita escrita de quem passa em
+   * `eh_admin()` no banco — mostrar para sócio seria oferecer uma tela que
+   * ele abre e não consegue usar.
+   */
+  soAdminDeVerdade?: boolean;
 }
 
 const grupos: { titulo: string; itens: Item[] }[] = [
@@ -32,8 +40,8 @@ const grupos: { titulo: string; itens: Item[] }[] = [
       { to: '/carrinho', label: 'Carrinho (maquininha)', icone: Smartphone },
       { to: '/painel/vendedores', label: 'Desempenho', icone: Users },
       { to: '/painel/pendencias', label: 'Pendências', icone: Inbox, soAdmin: true },
-      { to: '/painel/equipe', label: 'Equipe e Metas', icone: Target, soAdmin: true },
-      { to: '/painel/usuarios', label: 'Usuários', icone: KeyRound, soAdmin: true },
+      { to: '/painel/equipe', label: 'Equipe e Metas', icone: Target, soAdmin: true, soAdminDeVerdade: true },
+      { to: '/painel/usuarios', label: 'Usuários', icone: KeyRound, soAdmin: true, soAdminDeVerdade: true },
     ],
   },
   {
@@ -58,6 +66,10 @@ export function Sidebar({
 }: { recolhida: boolean; alternar: () => void }) {
   const { papel, setPapel, vendedorLogado, setVendedorLogado } = useFiltros();
   const admin = papel === 'admin';
+  // Papel de verdade (não o achatado do painel financeiro) — é o que decide
+  // "Equipe" e "Usuários", que só admin consegue de fato usar.
+  const { papel: papelReal } = useSessao();
+  const souAdminDeVerdade = papelReal === 'admin';
   // Só quem vê a tela precisa da contagem — vendedor nem chega perto da rota.
   const { data: pendencias } = useQuery({
     queryKey: ['pendencias-total'],
@@ -112,7 +124,11 @@ export function Sidebar({
 
       <nav className={cn('flex-1 overflow-y-auto py-4', recolhida ? 'px-2' : 'px-3')}>
         {grupos.map((g) => {
-          const visiveis = g.itens.filter((i) => admin || !i.soAdmin);
+          const visiveis = g.itens.filter((i) => {
+            if (i.soAdmin && !admin) return false;
+            if (i.soAdminDeVerdade && !souAdminDeVerdade) return false;
+            return true;
+          });
           if (!visiveis.length) return null;
           return (
             <div key={g.titulo} className="mb-5">

@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { Shell } from '@/painel/components/layout/Shell';
 import { useEhAdmin } from '@/painel/store/filtros';
+import { useSessao } from '@/store/sessao';
 import Overview from '@/painel/pages/Overview';
 import Vendas from '@/painel/pages/Vendas';
 import NovaVenda from '@/painel/pages/NovaVenda';
@@ -33,6 +34,18 @@ function SomenteAdmin({ children }: { children: ReactNode }) {
   return admin ? <>{children}</> : <Navigate to="." replace />;
 }
 
+/**
+ * Diferente de `SomenteAdmin`: aquele usa o papel "achatado" do painel
+ * financeiro, que trata sócio como admin (faz sentido lá — os dois veem
+ * dinheiro). Aqui é o papel de VERDADE, porque só admin passa em `eh_admin()`
+ * no banco: a tabela `vendedor` (Equipe, Usuários) recusa escrita de sócio.
+ * Mostrar a tela para quem o banco vai recusar não é permissão, é armadilha.
+ */
+function SomenteAdminDeVerdade({ children }: { children: ReactNode }) {
+  const { papel } = useSessao();
+  return papel === 'admin' ? <>{children}</> : <Navigate to="." replace />;
+}
+
 export default function AreaPainel() {
   return (
     <Routes>
@@ -44,8 +57,8 @@ export default function AreaPainel() {
         <Route path="pendencias" element={<SomenteAdmin><Pendencias /></SomenteAdmin>} />
         <Route path="vendedores" element={<Vendedores />} />
         <Route path="vendedores/:id" element={<VendedorDetalhe />} />
-        <Route path="equipe" element={<SomenteAdmin><Equipe /></SomenteAdmin>} />
-        <Route path="usuarios" element={<SomenteAdmin><Usuarios /></SomenteAdmin>} />
+        <Route path="equipe" element={<SomenteAdminDeVerdade><Equipe /></SomenteAdminDeVerdade>} />
+        <Route path="usuarios" element={<SomenteAdminDeVerdade><Usuarios /></SomenteAdminDeVerdade>} />
         <Route path="financeiro" element={<SomenteAdmin><Financeiro /></SomenteAdmin>} />
         <Route path="campanhas" element={<SomenteAdmin><Campanhas /></SomenteAdmin>} />
         <Route path="impostos" element={<SomenteAdmin><Impostos /></SomenteAdmin>} />
