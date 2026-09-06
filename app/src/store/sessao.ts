@@ -45,6 +45,8 @@ interface Sessao {
   vendedorId: string;
   nome: string;
   papel: PapelBanco;
+  /** capacidades soltas além do papel fixo — ver migração `vendedor_usuario_e_permissoes` */
+  permissoes: Record<string, boolean>;
   areas: Area[];
 
   iniciar: () => void;
@@ -78,6 +80,7 @@ export const useSessao = create<Sessao>((set, get) => ({
   vendedorId: MOCK ? 'v1' : '',
   nome: MOCK ? 'Gabriel Roldan' : '',
   papel: 'admin',
+  permissoes: {},
   areas: ['painel', 'crm'],
 
   /**
@@ -98,7 +101,7 @@ export const useSessao = create<Sessao>((set, get) => ({
 
       const { data } = await supabase
         .from('vendedor')
-        .select('id, nome, papel, iniciais, meta_mensal, comissao_pct')
+        .select('id, nome, papel, iniciais, meta_mensal, comissao_pct, permissoes')
         .eq('auth_user_id', uid).maybeSingle();
 
       if (!data) {
@@ -123,6 +126,7 @@ export const useSessao = create<Sessao>((set, get) => ({
       const base = {
         autenticado: true, carregando: false, semCadastro: false,
         vendedorId: data.id, nome: data.nome, papel,
+        permissoes: (data.permissoes as Record<string, boolean>) ?? {},
         areas: areasDoPapel(papel),
       };
 

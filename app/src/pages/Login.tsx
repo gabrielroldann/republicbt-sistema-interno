@@ -12,8 +12,16 @@ import { supabase } from '@/lib/supabase';
  * "ninguém" e o banco recusa tudo — o painel abre zerado e parece que a loja
  * não vendeu nada.
  */
+/**
+ * A Republic não tem domínio de e-mail próprio ainda, então o login é por
+ * NOME DE USUÁRIO. Por baixo o Supabase Auth continua exigindo um e-mail —
+ * este é o mesmo domínio sintético usado pela função `gerenciar-usuario` ao
+ * criar a conta. Nunca é enviado e-mail para lá, é só um formato válido.
+ */
+const DOMINIO_INTERNO = 'republicbt.internal';
+
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [usuario, setUsuario] = useState('');
   const [senha, setSenha] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const [entrando, setEntrando] = useState(false);
@@ -23,15 +31,16 @@ export default function Login() {
     setErro(null);
     setEntrando(true);
     try {
+      const email = `${usuario.trim().toLowerCase()}@${DOMINIO_INTERNO}`;
       const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(), password: senha,
+        email, password: senha,
       });
-      // A mensagem do Supabase é genérica de propósito: ela não diz se o e-mail
-      // existe, para não virar uma forma de descobrir quem tem conta. Traduzo
-      // mantendo essa ambiguidade.
+      // A mensagem do Supabase é genérica de propósito: ela não diz se o
+      // usuário existe, para não virar uma forma de descobrir quem tem conta.
+      // Traduzo mantendo essa ambiguidade.
       if (error) {
         setErro(/invalid login/i.test(error.message)
-          ? 'E-mail ou senha incorretos.' : error.message);
+          ? 'Usuário ou senha incorretos.' : error.message);
       }
     } catch {
       setErro('não deu para conectar. Confira sua internet.');
@@ -54,8 +63,8 @@ export default function Login() {
         <form onSubmit={entrar}
               className="space-y-3 rounded-md border border-line bg-elev p-5">
           <div>
-            <label className="mb-1 block text-2xs uppercase tracking-wide text-faint">E-mail</label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            <label className="mb-1 block text-2xs uppercase tracking-wide text-faint">Usuário</label>
+            <Input type="text" value={usuario} onChange={(e) => setUsuario(e.target.value)}
                    autoComplete="username" autoFocus required />
           </div>
           <div>

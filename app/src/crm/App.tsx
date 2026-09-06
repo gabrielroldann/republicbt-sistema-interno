@@ -7,6 +7,9 @@ import ConfigurarFunil from '@/crm/pages/ConfigurarFunil';
 import Conversas from '@/crm/pages/Conversas';
 import Clientes from '@/crm/pages/Clientes';
 import Configuracoes from '@/crm/pages/Configuracoes';
+// Mesma tela do painel — Link de Pagamento não é dado exclusivo de nenhuma
+// área, só depende de papel/permissão (ver Sidebar), então reaproveita.
+import LinkPagamento from '@/painel/pages/LinkPagamento';
 
 /**
  * O CRM, agora como ÁREA de um sistema só.
@@ -29,6 +32,7 @@ export default function AreaCrm() {
           <Route index element={<Funil />} />
           <Route path="conversas" element={<Conversas />} />
           <Route path="clientes" element={<Clientes />} />
+          <Route path="link-pagamento" element={<LinkPagamento />} />
           <Route path="funil/configurar" element={<ConfigurarFunil />} />
           <Route path="configuracoes" element={<Configuracoes />} />
           <Route path="*" element={<Navigate to="." replace />} />

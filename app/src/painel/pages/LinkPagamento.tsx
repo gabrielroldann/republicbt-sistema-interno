@@ -85,7 +85,10 @@ export default function LinkPagamento() {
   return (
     <div className="stagger space-y-4 pb-10">
       <div className="flex items-center gap-3">
-        <Button type="button" variant="outline" size="iconSm" onClick={() => navigate('/painel/vendas')}>
+        {/* `-1` em vez de um caminho fixo: esta tela também é usada dentro do
+            CRM (vendedor com a permissão), onde "/painel/vendas" não existe
+            para quem só tem a área do CRM. */}
+        <Button type="button" variant="outline" size="iconSm" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <span className="text-xs text-muted">

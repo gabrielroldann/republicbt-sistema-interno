@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import {
-  KanbanSquare, LogOut, MessageSquare, PanelLeft, PanelLeftClose, Plus, Settings,
+  KanbanSquare, Link2, LogOut, MessageSquare, PanelLeft, PanelLeftClose, Plus, Settings,
   ShoppingCart, SlidersHorizontal, Users, type LucideIcon,
 } from 'lucide-react';
 import { MOCK } from '@/lib/supabase';
@@ -22,6 +22,12 @@ interface Item {
   /** só o dono vê. O banco também recusa, mas não vale oferecer o que
       vai ser negado. */
   soAdmin?: boolean;
+  /**
+   * Só aparece para vendedor comum com essa chave ligada em `permissoes`.
+   * Sócio e admin não precisam: eles já têm o equivalente dentro do painel —
+   * duplicar a entrada aqui só confundiria qual delas usar.
+   */
+  somenteVendedorComPermissao?: string;
 }
 
 const grupos: { titulo: string; itens: Item[] }[] = [
@@ -33,6 +39,8 @@ const grupos: { titulo: string; itens: Item[] }[] = [
       // Fora de `/crm/*` de propósito (ver App.tsx) — tela cheia, sem menu,
       // pensada para o celular do vendedor na loja.
       { to: '/carrinho', label: 'Carrinho (maquininha)', icone: ShoppingCart },
+      { to: '/crm/link-pagamento', label: 'Link de Pagamento', icone: Link2,
+        somenteVendedorComPermissao: 'link_pagamento' },
     ],
   },
   {
@@ -57,7 +65,7 @@ export function Sidebar({
   recolhida, alternar, onNovoLead,
 }: { recolhida: boolean; alternar: () => void; onNovoLead: () => void }) {
   const { id: tema } = useTema();
-  const { vendedorId, papel, nome, sair } = useSessao();
+  const { vendedorId, papel, permissoes, nome, sair } = useSessao();
   const { vendedorDemo, setVendedorDemo } = useFiltrosCrm();
   const { data: vendedores } = useVendedores();
 
@@ -114,7 +122,12 @@ export function Sidebar({
 
       <nav className={cn('flex-1 overflow-y-auto py-4', recolhida ? 'px-2' : 'px-3')}>
         {grupos.map((g) => {
-          const visiveis = g.itens.filter((i) => !i.soAdmin || papel === 'admin');
+          const visiveis = g.itens.filter((i) => {
+            if (i.soAdmin && papel !== 'admin') return false;
+            if (i.somenteVendedorComPermissao
+              && !(papel === 'vendedor' && permissoes[i.somenteVendedorComPermissao])) return false;
+            return true;
+          });
           if (!visiveis.length) return null;
           return (
           <div key={g.titulo} className="mb-5">
