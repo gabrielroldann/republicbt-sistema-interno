@@ -7,9 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input, Select, Campo, Segmentado } from '@/components/ui/field';
 import { Table, TBody, TD, TH, THead, TR, TableWrap } from '@/components/ui/table';
-import { alternarVendedorAtivo } from '@/painel/data/queries';
 import {
-  atualizarPapelEPermissoes, criarUsuario, listarUsuarios, resetarSenha,
+  atualizarPapelEPermissoes, criarUsuario, definirAtivo, listarUsuarios, resetarSenha,
   type PapelUsuario, type Usuario,
 } from '@/painel/data/usuarios';
 import { cn } from '@/lib/utils';
@@ -190,7 +189,9 @@ function LinhaUsuario({
     onSuccess: onSenhaGerada,
   });
   const mAtivo = useMutation({
-    mutationFn: () => alternarVendedorAtivo(usuario.id),
+    // Valor de destino explícito (não um "alternar") — ver o comentário em
+    // `definirAtivo`, em usuarios.ts.
+    mutationFn: () => definirAtivo(usuario.id, !usuario.ativo),
     onSuccess: onMudou,
   });
 

@@ -42,10 +42,15 @@ export default function App() {
   if (!autenticado) return <Login />;
 
   if (semCadastro) {
+    // Duas causas levam aqui, e o RLS as torna indistinguíveis daqui de
+    // dentro: a conta nunca foi ligada a um vendedor, OU foi ligada e depois
+    // desativada (o `vendedor_leitura` exige `ativo`, então uma conta
+    // desativada some da consulta exatamente como uma que nunca existiu).
+    // Por isso o texto cobre as duas, em vez de afirmar uma causa errada.
     return <Aviso onSair={() => void sair()}
-      titulo="Sua conta ainda não está ligada a um vendedor"
-      texto="O login funcionou, mas falta o administrador cadastrar você na equipe.
-             Até lá o sistema não tem como saber o que é seu." />;
+      titulo="Sua conta não está liberada neste sistema"
+      texto="O login funcionou, mas ou falta o administrador ligar você a um vendedor,
+             ou o seu acesso foi desativado. Fale com o administrador." />;
   }
 
   // Erro de carga NÃO pode virar painel zerado: zero em faturamento parece

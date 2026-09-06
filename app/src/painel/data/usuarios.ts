@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { recarregar } from '@/painel/data/fonte';
 
 /**
  * ACESSO — quem consegue logar e o que consegue fazer.
@@ -49,6 +50,10 @@ export async function criarUsuario(dados: {
   });
   if (error) throw new Error(await extrairErro(error));
   if (data?.error) throw new Error(data.error);
+  // A Edge Function grava direto no banco, por fora do cache do painel — sem
+  // isto, o vendedor recém-criado não aparece em Equipe/Desempenho até
+  // alguma outra escrita do painel disparar um recarregamento.
+  await recarregar();
   return data.senha as string;
 }
 
@@ -68,6 +73,23 @@ export async function atualizarPapelEPermissoes(
 ) {
   const { error } = await supabase.from('vendedor').update({ papel, permissoes }).eq('id', id);
   if (error) throw new Error(error.message);
+  await recarregar();
+}
+
+/**
+ * Ativa ou desativa — com o valor final explícito, não um "alternar".
+ *
+ * `alternarVendedorAtivo` (queries.ts) decide o próximo valor lendo o cache
+ * em memória do painel, que só é preenchido por `recarregar()`. Um usuário
+ * criado nesta tela ainda não está nesse cache, então o toggle "adivinharia"
+ * errado o estado atual. Aqui o estado vem de `listarUsuarios()`, que é
+ * sempre fresco — por isso a tela manda o valor de destino, não pede para
+ * inferir.
+ */
+export async function definirAtivo(id: string, ativo: boolean) {
+  const { error } = await supabase.from('vendedor').update({ ativo }).eq('id', id);
+  if (error) throw new Error(error.message);
+  await recarregar();
 }
 
 /**

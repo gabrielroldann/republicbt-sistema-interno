@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Shell } from '@/crm/components/layout/Shell';
 import { NovoLead } from '@/crm/components/NovoLead';
@@ -10,6 +10,19 @@ import Configuracoes from '@/crm/pages/Configuracoes';
 // Mesma tela do painel — Link de Pagamento não é dado exclusivo de nenhuma
 // área, só depende de papel/permissão (ver Sidebar), então reaproveita.
 import LinkPagamento from '@/painel/pages/LinkPagamento';
+import { useSessao } from '@/store/sessao';
+
+/**
+ * A Sidebar já ESCONDE "Link de Pagamento" do vendedor sem a permissão — mas
+ * esconder o item de menu não impede digitar a URL direto. Sócio e admin
+ * sempre passam (já têm o equivalente dentro do painel); vendedor só passa
+ * com `permissoes.link_pagamento` ligado.
+ */
+function SomenteComPermissaoDeLink({ children }: { children: ReactNode }) {
+  const { papel, permissoes } = useSessao();
+  const liberado = papel !== 'vendedor' || !!permissoes.link_pagamento;
+  return liberado ? <>{children}</> : <Navigate to="." replace />;
+}
 
 /**
  * O CRM, agora como ÁREA de um sistema só.
@@ -32,7 +45,9 @@ export default function AreaCrm() {
           <Route index element={<Funil />} />
           <Route path="conversas" element={<Conversas />} />
           <Route path="clientes" element={<Clientes />} />
-          <Route path="link-pagamento" element={<LinkPagamento />} />
+          <Route path="link-pagamento" element={
+            <SomenteComPermissaoDeLink><LinkPagamento /></SomenteComPermissaoDeLink>
+          } />
           <Route path="funil/configurar" element={<ConfigurarFunil />} />
           <Route path="configuracoes" element={<Configuracoes />} />
           <Route path="*" element={<Navigate to="." replace />} />

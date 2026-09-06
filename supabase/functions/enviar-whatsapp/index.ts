@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
   if (!usuario?.user) return erro('não autenticado', 401);
 
   const { data: vendedor } = await db
-    .from('vendedor').select('id').eq('auth_user_id', usuario.user.id)
+    .from('vendedor').select('id, papel').eq('auth_user_id', usuario.user.id)
     .eq('ativo', true).maybeSingle();
   if (!vendedor) return erro('usuário não é um vendedor ativo', 403);
 
@@ -63,16 +63,39 @@ Deno.serve(async (req) => {
 
   const { data: conversa } = await db
     .from('conversa')
-    .select('telefone, ultima_mensagem_cliente_em, canal:canal_id (id, via, phone_number_id, ig_id, instancia, ativo)')
+    .select(`
+      telefone, ultima_mensagem_cliente_em, atendente_id,
+      canal:canal_id (id, via, phone_number_id, ig_id, instancia, ativo, vendedor_id)
+    `)
     .eq('id', conversaId).maybeSingle();
 
   if (!conversa) return erro('conversa não encontrada', 404);
 
   const canal = conversa.canal as unknown as {
     id: string; via: string; phone_number_id: string | null;
-    ig_id: string | null; instancia: string | null; ativo: boolean;
+    ig_id: string | null; instancia: string | null; ativo: boolean; vendedor_id: string | null;
   };
   if (!canal?.ativo) return erro('o número desta conversa está desativado');
+
+  /**
+   * A MESMA REGRA DE VISIBILIDADE do RLS de `conversa` (`04-acesso.sql`),
+   * repetida aqui na mão.
+   *
+   * Precisa ser repetida porque esta função roda com service_role — a
+   * consulta acima já ignorou o RLS para poder ler a conversa. Sem esta
+   * conferência, QUALQUER vendedor ativo poderia mandar mensagem em nome da
+   * loja em uma conversa de outro colega, só sabendo o `conversaId`.
+   */
+  const ehGestor = vendedor.papel === 'admin' || vendedor.papel === 'socio';
+  if (!ehGestor) {
+    const { data: vendedorVeTudo } = await db.rpc('config_bool', {
+      p_chave: 'vendedor_ve_conversas_de_todos',
+    });
+    const autorizado = vendedorVeTudo === true
+      || conversa.atendente_id === vendedor.id
+      || canal.vendedor_id === vendedor.id;
+    if (!autorizado) return erro('você não tem acesso a esta conversa', 403);
+  }
 
   if (canal.via === 'evolution') {
     // Honesto em vez de silencioso: o número do vendedor ainda não tem via de

@@ -58,7 +58,11 @@ export async function carregar(forcar = false): Promise<void> {
     rVendedores, rProdutos, rMovimentos, rVendas, rPagamentos,
     rDespesas, rContas, rMetas, rCampanhas, rCustoMidia, rCustosFixos, rLeads,
   ] = await Promise.all([
-    supabase.from('vendedor').select('*'),
+    // Colunas explícitas, não `*`: `usuario` e `permissoes` são dado de
+    // acesso (login, permissões de outros colegas) — não há por que todo
+    // vendedor autenticado receber isso pela rede só para ver nome/meta/
+    // comissão dos colegas em Equipe/Desempenho.
+    supabase.from('vendedor').select('id, nome, iniciais, meta_mensal, comissao_pct, ativo'),
     supabase.from('produto').select('*'),
     supabase.from('movimento_estoque').select('*'),
     // `venda` não guarda nome nem cidade: guarda `cliente_id`. O nome vem do
