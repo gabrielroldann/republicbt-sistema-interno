@@ -13,6 +13,7 @@ import {
   type PapelUsuario, type Usuario,
 } from '@/painel/data/usuarios';
 import { cn } from '@/lib/utils';
+import { useSessao } from '@/store/sessao';
 
 /**
  * USUÁRIOS — quem consegue entrar no sistema, e com qual papel.
@@ -28,6 +29,7 @@ import { cn } from '@/lib/utils';
  */
 export default function Usuarios() {
   const qc = useQueryClient();
+  const { vendedorId: meuId } = useSessao();
   const { data: usuarios, isLoading } = useQuery({ queryKey: ['usuarios'], queryFn: listarUsuarios });
   const [senhaGerada, setSenhaGerada] = useState<{ usuario: string; senha: string } | null>(null);
 
@@ -70,7 +72,7 @@ export default function Usuarios() {
                   ))
                   : (usuarios ?? []).map((u) => (
                     <LinhaUsuario
-                      key={u.id} usuario={u}
+                      key={u.id} usuario={u} souEu={u.id === meuId}
                       onSenhaGerada={(senha) => setSenhaGerada({ usuario: u.usuario ?? u.nome, senha })}
                       onMudou={() => qc.invalidateQueries({ queryKey: ['usuarios'] })}
                     />
@@ -172,8 +174,8 @@ function FormularioCriarUsuario({ onCriado }: { onCriado: (usuario: string, senh
 }
 
 function LinhaUsuario({
-  usuario, onSenhaGerada, onMudou,
-}: { usuario: Usuario; onSenhaGerada: (senha: string) => void; onMudou: () => void }) {
+  usuario, souEu, onSenhaGerada, onMudou,
+}: { usuario: Usuario; souEu: boolean; onSenhaGerada: (senha: string) => void; onMudou: () => void }) {
   const mPapel = useMutation({
     mutationFn: (papel: PapelUsuario) => atualizarPapelEPermissoes(usuario.id, papel, usuario.permissoes),
     onSuccess: onMudou,
@@ -203,7 +205,8 @@ function LinhaUsuario({
         <Select
           className="h-8 w-40 text-xs"
           value={usuario.papel}
-          disabled={mPapel.isPending}
+          disabled={mPapel.isPending || souEu}
+          title={souEu ? 'Peça para outro admin trocar o seu papel' : undefined}
           onChange={(e) => mPapel.mutate(e.target.value as PapelUsuario)}
         >
           <option value="vendedor">Vendedor</option>
@@ -235,7 +238,8 @@ function LinhaUsuario({
           <Button
             variant="ghost" size="sm"
             onClick={() => mAtivo.mutate()}
-            disabled={mAtivo.isPending}
+            disabled={mAtivo.isPending || (souEu && usuario.ativo)}
+            title={souEu && usuario.ativo ? 'Você não pode se desativar' : undefined}
           >
             {usuario.ativo ? 'Desativar' : 'Reativar'}
           </Button>
