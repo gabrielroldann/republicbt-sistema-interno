@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   BarChart3, Boxes, Inbox, KeyRound, LayoutDashboard, LogOut, Megaphone, PanelLeft, PanelLeftClose,
   Plus, Receipt, Settings, ShieldCheck, ShoppingCart, Smartphone, Target, User, Users,
@@ -8,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { SeletorSistema } from '@/components/SeletorSistema';
 import { useFiltros } from '@/painel/store/filtros';
 import { vendedores } from '@/painel/data/mock';
+import { contarPendencias } from '@/painel/data/pendencias';
 import { Select } from '@/components/ui/field';
 
 interface Item {
@@ -56,6 +58,13 @@ export function Sidebar({
 }: { recolhida: boolean; alternar: () => void }) {
   const { papel, setPapel, vendedorLogado, setVendedorLogado } = useFiltros();
   const admin = papel === 'admin';
+  // Só quem vê a tela precisa da contagem — vendedor nem chega perto da rota.
+  const { data: pendencias } = useQuery({
+    queryKey: ['pendencias-total'],
+    queryFn: contarPendencias,
+    enabled: admin,
+    refetchInterval: 60_000,
+  });
 
   return (
     <aside
@@ -116,7 +125,9 @@ export function Sidebar({
                     key={to}
                     to={to}
                     end={to === '/painel'}
-                    title={recolhida ? label : undefined}
+                    title={recolhida
+                      ? (to === '/painel/pendencias' && pendencias ? `${label} — ${pendencias}` : label)
+                      : undefined}
                     className={({ isActive }) =>
                       cn(
                         // Barra de acento à esquerda além do fundo: é o que permite
@@ -131,8 +142,22 @@ export function Sidebar({
                   >
                     {({ isActive }) => (
                       <>
-                        <Icone className={cn('h-[17px] w-[17px] shrink-0', isActive && 'text-gold-400')} strokeWidth={1.9} />
-                        {!recolhida && <span className="truncate">{label}</span>}
+                        <span className="relative shrink-0">
+                          <Icone className={cn('h-[17px] w-[17px]', isActive && 'text-gold-400')} strokeWidth={1.9} />
+                          {recolhida && to === '/painel/pendencias' && !!pendencias && (
+                            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-attention" />
+                          )}
+                        </span>
+                        {!recolhida && (
+                          <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                            <span className="truncate">{label}</span>
+                            {to === '/painel/pendencias' && !!pendencias && (
+                              <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-attention px-1 text-[10px] font-bold tabular-nums text-white">
+                                {pendencias}
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </>
                     )}
                   </NavLink>

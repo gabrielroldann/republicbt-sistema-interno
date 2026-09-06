@@ -106,6 +106,17 @@ export async function listarClientesLeadAmbiguo(): Promise<ClienteLeadAmbiguo[]>
 }
 
 /**
+ * Total das duas filas — para o sininho da barra lateral. Mesmas duas
+ * consultas da tela; a diferença é que aqui só o tamanho importa.
+ */
+export async function contarPendencias(): Promise<number> {
+  const [vendas, leads] = await Promise.all([
+    listarVendasSemCliente(), listarClientesLeadAmbiguo(),
+  ]);
+  return vendas.length + leads.length;
+}
+
+/**
  * Linka o cliente numa venda pendente — mesmo RPC `identificar_cliente` de
  * sempre. Ao gravar `cliente_id` na venda, o trigger `venda_fecha_lead`
  * dispara sozinho: se esse cliente tiver exatamente um lead aberto, fecha

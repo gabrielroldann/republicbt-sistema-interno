@@ -17,6 +17,7 @@
 import { MOCK } from '@/lib/supabase';
 import * as mock from './mock-queries';
 import * as banco from './supabase-queries';
+import type { FiltrosCaixa } from './tipos';
 
 export { normalizarTelefone, formatarTelefone, linkWhatsApp } from '@/lib/telefone';
 export { preencherMarcadores, MARCADORES } from './mock-queries';
@@ -71,3 +72,17 @@ export const abrirNoMeuNumero = fonte.abrirNoMeuNumero;
 /* mensagem padrão do vendedor */
 export const getMensagemPadrao = fonte.getMensagemPadrao;
 export const setMensagemPadrao = fonte.setMensagemPadrao;
+
+/**
+ * Total de mensagens não lidas — para o sininho da barra lateral.
+ *
+ * Não é uma consulta própria: reaproveita `getConversas`, que já é a fonte
+ * única de "o que este usuário enxerga" (mock espelha o RLS; no banco é o
+ * RLS de verdade). Duplicar o filtro de visibilidade aqui seria a mesma
+ * regra escrita duas vezes, e ela já divergiu uma vez entre tela e banco no
+ * passado.
+ */
+export async function contarNaoLidas(f: FiltrosCaixa): Promise<number> {
+  const conversas = await fonte.getConversas(f);
+  return conversas.reduce((soma, c) => soma + c.naoLidas, 0);
+}

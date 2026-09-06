@@ -9,7 +9,7 @@ import { SeletorSistema } from '@/components/SeletorSistema';
 import { Select } from '@/components/ui/field';
 import { LISTA_TEMAS } from '@/tema/temas';
 import { useTema } from '@/tema/useTema';
-import { useVendedores } from '@/crm/data/hooks';
+import { useNaoLidasTotal, useVendedores } from '@/crm/data/hooks';
 import { useSessao } from '@/store/sessao';
 import { useFiltrosCrm } from '@/crm/store/filtros';
 
@@ -68,6 +68,9 @@ export function Sidebar({
   const { vendedorId, papel, permissoes, nome, sair } = useSessao();
   const { vendedorDemo, setVendedorDemo } = useFiltrosCrm();
   const { data: vendedores } = useVendedores();
+  // Sem filtro de canal/dono: é o total do que a pessoa enxerga, mesmo
+  // recorte que o RLS já aplica em `getConversas`.
+  const { data: naoLidas } = useNaoLidasTotal({ papel, vendedorId });
 
   // Com banco ligado, o nome vem da sessão — a lista de vendedores pode nem
   // ser legível pelo papel de quem entrou.
@@ -153,7 +156,9 @@ export function Sidebar({
                     key={to}
                     to={to}
                     end={to === '/crm'}
-                    title={recolhida ? label : undefined}
+                    title={recolhida
+                      ? (to === '/crm/conversas' && naoLidas ? `${label} — ${naoLidas} não lida(s)` : label)
+                      : undefined}
                     className={({ isActive }) =>
                       cn(
                         // Barra de acento à esquerda além do fundo: é o que permite
@@ -168,11 +173,26 @@ export function Sidebar({
                   >
                     {({ isActive }) => (
                       <>
-                        <Icone
-                          className={cn('h-[17px] w-[17px] shrink-0', isActive && 'text-gold-400')}
-                          strokeWidth={1.9}
-                        />
-                        {!recolhida && <span className="truncate">{label}</span>}
+                        <span className="relative shrink-0">
+                          <Icone
+                            className={cn('h-[17px] w-[17px]', isActive && 'text-gold-400')}
+                            strokeWidth={1.9}
+                          />
+                          {/* recolhida: só a bolinha, sem número — não cabe */}
+                          {recolhida && to === '/crm/conversas' && !!naoLidas && (
+                            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-gold-400" />
+                          )}
+                        </span>
+                        {!recolhida && (
+                          <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                            <span className="truncate">{label}</span>
+                            {to === '/crm/conversas' && !!naoLidas && (
+                              <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-gold-400 px-1 text-[10px] font-bold tabular-nums text-ongold">
+                                {naoLidas}
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </>
                     )}
                   </NavLink>

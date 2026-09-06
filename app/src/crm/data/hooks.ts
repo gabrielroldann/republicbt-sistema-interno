@@ -184,7 +184,7 @@ export const useLeadDetalhe = (id: string | null) =>
 /* ═════════════════════════════════════════════════ caixa de entrada ════ */
 
 import {
-  abrirNoMeuNumero, assumirConversa, enviarMensagem, excluirConversa, getCanais,
+  abrirNoMeuNumero, assumirConversa, contarNaoLidas, enviarMensagem, excluirConversa, getCanais,
   getConversa, getConversas, getConversasDoCliente, getMensagemPadrao, getMensagens,
   liberarConversa, marcarLida, setMensagemPadrao, type FiltrosCaixa,
 } from './queries';
@@ -209,6 +209,21 @@ export const useConversas = (f: FiltrosCaixa) =>
 
 export const useConversa = (id: string | null) =>
   useQuery({ queryKey: ['conversa', id], queryFn: () => getConversa(id!), enabled: !!id });
+
+/**
+ * O sininho da barra lateral do CRM.
+ *
+ * Chave começando em `'conversas'` de propósito: é o mesmo prefixo que
+ * `useCaixaRealtime` já invalida a cada INSERT/UPDATE em `conversa` ou
+ * `mensagem` — então enquanto a Caixa de Entrada está aberta isto atualiza
+ * na hora, de graça. Fora dela, o `refetchInterval` cobre o resto.
+ */
+export const useNaoLidasTotal = (f: FiltrosCaixa) =>
+  useQuery({
+    queryKey: ['conversas', 'nao-lidas-total', f],
+    queryFn: () => contarNaoLidas(f),
+    refetchInterval: 30_000,
+  });
 
 export const useConversasDoCliente = (clienteId?: string, exceto?: string) =>
   useQuery({

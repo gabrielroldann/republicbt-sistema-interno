@@ -55,6 +55,9 @@ export default function Pendencias() {
         onLinkado={() => {
           qc.invalidateQueries({ queryKey: ['pendencias-vendas'] });
           qc.invalidateQueries({ queryKey: ['pendencias-leads'] });
+          // Mesma chave do sininho na Sidebar — sem isto o número só cairia
+          // no próximo refetch automático, até 60s depois.
+          qc.invalidateQueries({ queryKey: ['pendencias-total'] });
         }}
       />
 
