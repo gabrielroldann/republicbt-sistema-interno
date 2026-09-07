@@ -74,7 +74,7 @@ export default function NovaVenda() {
   const [fase, setFase] = useState<'venda' | 'nota'>('venda');
   const [resultado, setResultado] = useState<
     | { ok: true; cliente: string; chave?: string; url?: string; semNota?: boolean }
-    | { ok: false; cliente: string; mensagem: string }
+    | { ok: false; cliente: string; mensagem: string; vendaFalhou?: boolean }
     | null
   >(null);
 
@@ -136,35 +136,49 @@ export default function NovaVenda() {
     setFase('venda');
     setDialogAberto(true);
 
-    const venda = await registrarVenda({
-      data: f.data,
-      produtoId: f.produtoId,
-      vendedorId: f.vendedorId,
-      quantidade: f.quantidade,
-      precoUnit: f.precoUnit,
-      formaPagamento: f.formaPagamento as FormaPagamento,
-      parcelas: f.parcelas,
-      entrega: f.entrega,
-      clienteNome: f.clienteNome,
-      clienteFone: f.clienteFone || undefined,
-      cidade: f.cidade || undefined,
-      canal: (f.canal || undefined) as never,
-      observacoes: f.observacoes || undefined,
-      tradeIn: f.temTradeIn && f.tradeInValor > 0
-        ? {
-            modelo: f.tradeInModelo || 'Não informado',
-            valorCredito: f.tradeInValor,
-            recebida: f.tradeInRecebida,
-          }
-        : undefined,
-      primeiroPagamento: f.registrarPagamento && f.pagamentoValor > 0
-        ? {
-            data: f.pagamentoData || f.data,
-            valor: f.pagamentoValor,
-            forma: f.formaPagamento as FormaPagamento,
-          }
-        : undefined,
-    });
+    // Sem try/catch aqui, qualquer falha (rede, RLS recusando, vendedorId
+    // que não existe de verdade — ver o guard de MOCK no Sidebar) deixava o
+    // diálogo preso no spinner para sempre: `showClose`/`onOpenChange` só
+    // fecham quando `resultado` existe, e sem capturar o erro ele nunca era
+    // setado. Achado na bateria de testes pré-produção.
+    let venda: Awaited<ReturnType<typeof registrarVenda>>;
+    try {
+      venda = await registrarVenda({
+        data: f.data,
+        produtoId: f.produtoId,
+        vendedorId: f.vendedorId,
+        quantidade: f.quantidade,
+        precoUnit: f.precoUnit,
+        formaPagamento: f.formaPagamento as FormaPagamento,
+        parcelas: f.parcelas,
+        entrega: f.entrega,
+        clienteNome: f.clienteNome,
+        clienteFone: f.clienteFone || undefined,
+        cidade: f.cidade || undefined,
+        canal: (f.canal || undefined) as never,
+        observacoes: f.observacoes || undefined,
+        tradeIn: f.temTradeIn && f.tradeInValor > 0
+          ? {
+              modelo: f.tradeInModelo || 'Não informado',
+              valorCredito: f.tradeInValor,
+              recebida: f.tradeInRecebida,
+            }
+          : undefined,
+        primeiroPagamento: f.registrarPagamento && f.pagamentoValor > 0
+          ? {
+              data: f.pagamentoData || f.data,
+              valor: f.pagamentoValor,
+              forma: f.formaPagamento as FormaPagamento,
+            }
+          : undefined,
+      });
+    } catch (e) {
+      setResultado({
+        ok: false, cliente: f.clienteNome, vendaFalhou: true,
+        mensagem: e instanceof Error ? e.message : 'Falha ao registrar a venda. Nada foi gravado — confira e tente de novo.',
+      });
+      return;
+    }
 
     qc.invalidateQueries();
 
@@ -264,7 +278,11 @@ export default function NovaVenda() {
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-negative-soft text-negative">
                 <AlertTriangle className="h-6 w-6" />
               </div>
-              <DialogTitle>Venda de {resultado.cliente} registrada, mas a nota não saiu</DialogTitle>
+              <DialogTitle>
+                {resultado.vendaFalhou
+                  ? `Não deu para registrar a venda de ${resultado.cliente}`
+                  : `Venda de ${resultado.cliente} registrada, mas a nota não saiu`}
+              </DialogTitle>
               <DialogDescription>{resultado.mensagem}</DialogDescription>
               <Button variant="outline" className="mt-1 w-full" onClick={fecharDialog}>Fechar</Button>
             </div>

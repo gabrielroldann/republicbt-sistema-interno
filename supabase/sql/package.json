@@ -8,7 +8,8 @@
     "teste-acesso": "node teste-acesso.mjs",
     "teste-funil": "node teste-funil.mjs",
     "teste-caixa": "node teste-caixa.mjs",
-    "teste-custos": "node teste-custos.mjs"
+    "teste-custos": "node teste-custos.mjs",
+    "teste-schema-completo": "node teste-schema-completo.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.2.17"

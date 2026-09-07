@@ -6,6 +6,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { MOCK } from '@/lib/supabase';
 import { SeletorSistema } from '@/components/SeletorSistema';
 import { useFiltros } from '@/painel/store/filtros';
 import { vendedores } from '@/painel/data/mock';
@@ -68,7 +69,7 @@ export function Sidebar({
   const admin = papel === 'admin';
   // Papel de verdade (não o achatado do painel financeiro) — é o que decide
   // "Equipe" e "Usuários", que só admin consegue de fato usar.
-  const { papel: papelReal } = useSessao();
+  const { papel: papelReal, sair } = useSessao();
   const souAdminDeVerdade = papelReal === 'admin';
   // Só quem vê a tela precisa da contagem — vendedor nem chega perto da rota.
   const { data: pendencias } = useQuery({
@@ -186,9 +187,17 @@ export function Sidebar({
 
       {/* perfil */}
       <div className="border-t border-line p-3">
-        {!recolhida && (
+        {/*
+          O seletor abaixo só existe em modo demonstração (sem banco ligado).
+          Com banco ligado, quem decide o papel é o auth + RLS, e `iniciar()`
+          (em store/sessao.ts) já sincroniza `vendedorLogado` com a linha real
+          de `vendedor` de quem entrou — um <select> aqui só ofereceria trocar
+          para um vendedor de mentira, com um id que não existe no banco (e
+          quem tentasse "Registrar venda" nesse estado travaria no meio: ver
+          NovaVenda.tsx). Mesmo motivo do guard em crm/components/layout/Sidebar.tsx.
+        */}
+        {!recolhida && MOCK && (
           <>
-            {/* Em produção vem do auth; aqui é seletor para conferir as duas visões. */}
             <div className="mb-2 flex rounded-md border border-line p-0.5">
               <button
                 onClick={() => setPapel('admin')}
@@ -227,19 +236,27 @@ export function Sidebar({
 
         <div className={cn('flex items-center gap-2.5 px-1 py-1', recolhida && 'justify-center px-0')}>
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gold-400 text-[11px] font-bold text-ongold">
-            {admin ? 'GR' : vendedorLogado.iniciais}
+            {vendedorLogado.iniciais}
           </div>
           {!recolhida && (
             <>
               <div className="min-w-0 flex-1 leading-tight">
                 <div className="truncate text-caption font-semibold text-ink">
-                  {admin ? 'Gabriel Roldan' : vendedorLogado.nome}
+                  {vendedorLogado.nome}
                 </div>
-                <div className="text-caption text-faint">{admin ? 'Sócio' : 'Vendedor'}</div>
+                <div className="text-caption text-faint">
+                  {{ admin: 'Administrador', socio: 'Sócio', vendedor: 'Vendedor' }[papelReal]}
+                </div>
               </div>
-              <button className="text-faint transition-colors hover:text-ink-2" title="Sair">
-                <LogOut className="h-4 w-4" />
-              </button>
+              {!MOCK && (
+                <button
+                  onClick={() => void sair()}
+                  className="text-faint transition-colors hover:text-negative"
+                  title="Sair"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              )}
             </>
           )}
         </div>
