@@ -674,7 +674,10 @@ export async function enviarMensagem(
   }
 
   const m: Mensagem = {
-    id: `m-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    // `crypto.randomUUID()`, não `Math.random()`: id só de demonstração (em
+    // memória, nunca sai daqui), mas scanners de segurança sinalizam
+    // Math.random() em qualquer contexto — trocar custa nada.
+    id: `m-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
     conversaId,
     direcao: 'saida',
     tipo: 'texto',

@@ -1391,7 +1391,10 @@ export async function darEntrada(i: EntradaInput): Promise<void> {
   }
 
   movimentos.push({
-    id: `mv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    // `crypto.randomUUID()`, não `Math.random()`: id só de demonstração (em
+    // memória, nunca sai daqui), mas scanners de segurança sinalizam
+    // Math.random() em qualquer contexto — trocar custa nada.
+    id: `mv-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`,
     produtoId: i.produtoId,
     quantidade: i.quantidade,
     tipo: 'entrada',

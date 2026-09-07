@@ -15,6 +15,7 @@
  *   node teste-anon.cjs
  */
 const fs = require('fs');
+const crypto = require('crypto');
 
 const env = Object.fromEntries(
   fs.readFileSync(`${__dirname}/.env.local`, 'utf8').split('\n')
@@ -93,7 +94,12 @@ const ALVOS = [
     headers: { apikey: ANON, 'content-type': 'application/json' },
     body: JSON.stringify({
       email: `sonda-${Date.now()}@exemplo-invalido.test`,
-      password: 'senha-de-sonda-123456',
+      // Gerada a cada execução, não fixa no código — mesma regra do resto do
+      // arquivo ("a senha sai do .env.local, nunca do código"). Não é uma
+      // credencial real (a conta é descartável e nem chega a existir se o
+      // cadastro estiver fechado), mas scanner de segredo não sabe disso, e
+      // não custa nada não deixar nenhuma senha, real ou não, fixa no texto.
+      password: crypto.randomBytes(16).toString('hex'),
     }),
   });
   const corpoCadastro = await cadastro.text();
