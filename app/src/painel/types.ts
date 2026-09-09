@@ -19,6 +19,19 @@ export const FORMAS_PAGAMENTO: { id: FormaPagamento; label: string; taxa: number
   { id: 'dinheiro', label: 'Dinheiro', taxa: 0 },
 ];
 
+/**
+ * As formas de pagamento que a tela MANUAL (Nova Venda) pode oferecer.
+ *
+ * IN SEFAZ-CE 87/2025 exige que cartão/Pix saiam na nota com `tipo_integracao=1`
+ * (integrado), o que só é verdade quando o código de autorização vem de uma
+ * consulta real à maquininha — ver `cielo-confirmar-venda`. Numa venda batida
+ * à mão aqui no painel não existe esse dado, e digitar o número que apareceu
+ * no comprovante NÃO conta como integração pra norma. Por isso só dinheiro
+ * (nunca precisa de integração) fica disponível neste formulário — cartão e
+ * Pix são vendidos exclusivamente pelo Carrinho (maquininha).
+ */
+export const FORMAS_PAGAMENTO_MANUAL = FORMAS_PAGAMENTO.filter((f) => f.id === 'dinheiro');
+
 export interface Vendedor {
   id: string;
   nome: string;

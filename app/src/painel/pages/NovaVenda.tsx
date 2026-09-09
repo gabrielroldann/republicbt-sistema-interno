@@ -14,7 +14,7 @@ import { gravando } from '@/painel/data/escritas';
 import { emitirNotaFiscal } from '@/painel/data/notaFiscal';
 import { useEstoque, useVendedores } from '@/painel/data/hooks';
 import { useFiltros } from '@/painel/store/filtros';
-import { CANAIS_VENDA, FORMAS_PAGAMENTO, type FormaPagamento } from '@/painel/types';
+import { CANAIS_VENDA, FORMAS_PAGAMENTO, FORMAS_PAGAMENTO_MANUAL, type FormaPagamento } from '@/painel/types';
 import { cn, fmtBRL, fmtPct, isoDia } from '@/lib/utils';
 
 const schema = z.object({
@@ -89,7 +89,7 @@ export default function NovaVenda() {
     defaultValues: {
       data: hoje, quantidade: 1, precoUnit: 0, entrega: 'pendente',
       temTradeIn: false, tradeInValor: 0, tradeInRecebida: false,
-      formaPagamento: 'pix', parcelas: 1,
+      formaPagamento: 'dinheiro', parcelas: 1,
       registrarPagamento: true, pagamentoData: hoje, pagamentoValor: 0,
       vendedorId: admin ? '' : vendedorLogado.id,
       clienteNome: doLead?.clienteNome ?? '',
@@ -376,9 +376,13 @@ export default function NovaVenda() {
       </Secao>
 
       <Secao n={5} titulo="Pagamento">
-        <Campo label="Forma">
+        <Campo
+          label="Forma"
+          className="lg:col-span-2"
+          hint="Cartão e Pix só pelo Carrinho (maquininha) — aqui a nota não sai integrada à SEFAZ."
+        >
           <Select {...register('formaPagamento')}>
-            {FORMAS_PAGAMENTO.map((f) => (
+            {FORMAS_PAGAMENTO_MANUAL.map((f) => (
               <option key={f.id} value={f.id}>{f.label} — {f.taxa}%</option>
             ))}
           </Select>
