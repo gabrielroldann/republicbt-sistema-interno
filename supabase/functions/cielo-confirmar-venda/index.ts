@@ -30,6 +30,16 @@
  * nomes possíveis. Antes de confiar nisso em produção, bater um PIX de
  * verdade e conferir se `venda.autorizacao_cartao` saiu preenchido.
  *
+ * CORREÇÃO (09/2026): `formaPagamentoDe`/`parcelas` liam `t.payment_fields`,
+ * campo que nunca aparece na doc oficial da Cielo nem no que a própria
+ * `cielo-simular-pagamento` envia (`payment_product`, conferido contra a
+ * doc). Como `primario` sempre vinha `''`, TODA venda da maquininha saía
+ * classificada como "crédito à vista" — inclusive débito e Pix — com taxa
+ * errada e, mais grave, `tPag` errado na NFC-e. Corrigido para
+ * `payment_product`. Ainda não confirmado contra uma resposta real da
+ * Cielo (Sandbox de simulação fora do ar desde 02/09) — testar assim que
+ * possível.
+ *
  * Variáveis: CIELO_CLIENT_ID, CIELO_ACCESS_TOKEN, CIELO_MERCHANT_ID,
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (automáticas)
  */
@@ -69,8 +79,8 @@ const TAXAS: Record<string, number> = {
 };
 
 function formaPagamentoDe(t: any): string {
-  const primario = t?.payment_fields?.primary_product_name ?? '';
-  const secundario = t?.payment_fields?.secondary_product_name ?? '';
+  const primario = t?.payment_product?.primary_product_name ?? '';
+  const secundario = t?.payment_product?.secondary_product_name ?? '';
   if (primario === 'PIX') return 'pix';
   if (primario === 'DEBITO') return 'debito';
   if (primario === 'CREDITO') {
@@ -165,7 +175,7 @@ Deno.serve(async (req) => {
 
   const formaPagamento = formaPagamentoDe(transacao);
   const taxaPct = TAXAS[formaPagamento] ?? 0;
-  const parcelas = Number(transacao?.payment_fields?.number_of_quotas ?? 0) || 1;
+  const parcelas = Number(transacao?.payment_product?.number_of_quotas ?? 0) || 1;
 
   // 2. itens do carrinho, com dados do produto (custo congelado agora)
   const { data: itens } = await db

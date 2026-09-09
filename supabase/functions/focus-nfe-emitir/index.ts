@@ -86,10 +86,12 @@ Deno.serve(async (req: Request) => {
     const produto = venda.produto as unknown as
       { nome: string; sku: string; ncm: string | null; cfop: string | null } | null;
     if (!produto?.ncm || !produto?.cfop) {
-      return resposta(
-        { erro: `Produto "${produto?.nome ?? '?'}" está sem NCM/CFOP configurado — não dá pra emitir nota.` },
-        422,
-      );
+      const msg = `Produto "${produto?.nome ?? '?'}" está sem NCM/CFOP configurado — não dá pra emitir nota.`;
+      // Mesmo achado do ramo de baixo: validação que barra ANTES de chamar a
+      // Focus também precisa gravar status_nfe, senão a venda fica com
+      // `null` pra sempre -- indistinguível de "nunca tentamos emitir".
+      await supabase.from('venda').update({ status_nfe: 'erro_envio', mensagem_nfe: msg }).eq('id', vendaId);
+      return resposta({ erro: msg }, 422);
     }
 
     const cliente = venda.cliente as unknown as { nome: string | null; cpf: string | null } | null;
@@ -98,10 +100,9 @@ Deno.serve(async (req: Request) => {
     const presencaComprador = domicilio ? '4' : '1';
 
     if (domicilio && !cliente?.cpf) {
-      return resposta(
-        { erro: 'Venda marcada como entrega a domicílio, mas o cliente não tem CPF cadastrado — a SEFAZ exige CPF/CNPJ do destinatário nesse caso (nome sozinho não é aceito).' },
-        422,
-      );
+      const msg = 'Venda marcada como entrega a domicílio, mas o cliente não tem CPF cadastrado — a SEFAZ exige CPF/CNPJ do destinatário nesse caso (nome sozinho não é aceito).';
+      await supabase.from('venda').update({ status_nfe: 'erro_envio', mensagem_nfe: msg }).eq('id', vendaId);
+      return resposta({ erro: msg }, 422);
     }
 
     const formaPagamentoFocus = FORMA_PAGAMENTO_FOCUS[venda.forma_pagamento] ?? '99';
@@ -111,21 +112,32 @@ Deno.serve(async (req: Request) => {
       forma_pagamento: formaPagamentoFocus,
       valor_pagamento: valorTotal,
     };
-    if (venda.autorizacao_cartao) {
-      formaPagamento.tipo_integracao = '1';
-      formaPagamento.cnpj_credenciadora = CNPJ_CIELO;
-      formaPagamento.nome_credenciadora = 'Cielo';
-      formaPagamento.numero_autorizacao = venda.autorizacao_cartao;
-      // idTermPag (Grupo YA) — identificador do terminal de pagamento.
-      // Só faz sentido junto de tipo_integracao=1: a Focus/SEFAZ não pedem
-      // isso em pagamento não integrado. Antes desta correção, o dado já
-      // era gravado na venda (ver cielo-confirmar-venda) mas nunca chegava
-      // até aqui — a nota saía sem esse campo, incompleta perante a norma.
-      if (venda.terminal_pagamento) {
-        formaPagamento.id_terminal_pagamento = venda.terminal_pagamento;
+    // Grupo YA (tpIntegra/CNPJ/cAut/idTermPag) só pode ir na nota quando a
+    // forma de pagamento é eletrônica -- confirmado agora com a SEFAZ de
+    // verdade (ambiente homologação): uma venda em dinheiro com
+    // `tipo_integracao` presente (mesmo '2', "não integrado") volta
+    // REJEITADA, código 963 "Tipo de pagamento não aceita o grupo de
+    // cartões ou boletos". Pix (tPag 17) aceita o grupo normalmente. Por
+    // isso o grupo inteiro fica de fora quando a venda é em dinheiro --
+    // antes desta correção, TODA venda em dinheiro seria rejeitada pela
+    // SEFAZ assim que emitida (achado batendo a nota de teste de verdade).
+    if (venda.forma_pagamento !== 'dinheiro') {
+      if (venda.autorizacao_cartao) {
+        formaPagamento.tipo_integracao = '1';
+        formaPagamento.cnpj_credenciadora = CNPJ_CIELO;
+        formaPagamento.nome_credenciadora = 'Cielo';
+        formaPagamento.numero_autorizacao = venda.autorizacao_cartao;
+        // idTermPag (Grupo YA) — identificador do terminal de pagamento.
+        // Só faz sentido junto de tipo_integracao=1: a Focus/SEFAZ não pedem
+        // isso em pagamento não integrado. Antes desta correção, o dado já
+        // era gravado na venda (ver cielo-confirmar-venda) mas nunca chegava
+        // até aqui — a nota saía sem esse campo, incompleta perante a norma.
+        if (venda.terminal_pagamento) {
+          formaPagamento.id_terminal_pagamento = venda.terminal_pagamento;
+        }
+      } else {
+        formaPagamento.tipo_integracao = '2';
       }
-    } else {
-      formaPagamento.tipo_integracao = '2';
     }
 
     const corpo: Record<string, unknown> = {
@@ -188,11 +200,30 @@ Deno.serve(async (req: Request) => {
         caminho_danfe: dados.caminho_danfe,
         caminho_xml: caminhoXml,
         qrcode_url: dados.qrcode_url,
+        mensagem_nfe: null,
       }).eq('id', vendaId);
       dados.url_danfe = hostArquivos + dados.caminho_danfe;
       dados.url_xml = caminhoXml;
     } else if (dados?.status === 'erro_autorizacao') {
-      await supabase.from('venda').update({ status_nfe: 'erro_autorizacao' }).eq('id', vendaId);
+      // A SEFAZ recusou a nota (rejeição formal, com mensagem própria).
+      await supabase.from('venda').update({
+        status_nfe: 'erro_autorizacao',
+        mensagem_nfe: dados?.mensagem_sefaz ?? null,
+      }).eq('id', vendaId);
+    } else {
+      // QUALQUER outro formato de resposta -- erro de autenticação, payload
+      // rejeitado antes de chegar na SEFAZ, indisponibilidade da Focus, etc.
+      // Achado na bateria de testes: sem este ramo, `status_nfe` ficava
+      // `null` pra sempre nesses casos -- a nota "sumia" sem deixar rastro
+      // nenhum no banco, só no que apareceu na tela de quem estava olhando
+      // na hora. Sempre grava alguma coisa, mesmo que a mensagem seja crua.
+      const motivo = typeof dados === 'string'
+        ? dados.slice(0, 2000)
+        : (dados?.mensagem ?? dados?.erro ?? dados?.message ?? JSON.stringify(dados)).toString().slice(0, 2000);
+      await supabase.from('venda').update({
+        status_nfe: 'erro_envio',
+        mensagem_nfe: `HTTP ${resp.status}: ${motivo}`,
+      }).eq('id', vendaId);
     }
 
     return resposta({ status_http: resp.status, corpo_enviado: corpo, resposta: dados }, 200);

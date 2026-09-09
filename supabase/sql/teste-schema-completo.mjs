@@ -67,6 +67,7 @@ const ARQUIVOS = [
   '15-carrinho-cielo-nfe-pedido-link.sql', '16-venda-fecha-lead.sql',
   '17-indices-cliente-id.sql', '18-vendedor-usuario-e-permissoes.sql',
   '19-alinhar-email-auth-usuarios-semente.sql', '20-otimiza-rls-link-e-indices-fk.sql',
+  '21-diagnostico-erro-nfe.sql',
 ];
 
 console.log(`\napliando ${ARQUIVOS.length} arquivos de schema, um banco vazio, do zero:\n`);
