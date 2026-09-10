@@ -56,7 +56,7 @@ const grupos: { titulo: string; itens: Item[] }[] = [
   {
     titulo: 'Operação',
     itens: [
-      { to: '/painel/estoque', label: 'Estoque', icone: Boxes },
+      { to: '/painel/estoque', label: 'Produtos', icone: Boxes },
       { to: '/painel/configuracoes', label: 'Configurações', icone: Settings },
     ],
   },

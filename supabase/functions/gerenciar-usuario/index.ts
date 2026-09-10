@@ -68,6 +68,7 @@ Deno.serve(async (req) => {
     acao?: 'criar' | 'resetar_senha';
     nome?: string; usuario?: string; papel?: string;
     permissoes?: Record<string, boolean>;
+    comissaoPct?: number;
     vendedorId?: string;
   };
   try { corpo = await req.json(); } catch { return erro('corpo inválido'); }
@@ -100,6 +101,9 @@ Deno.serve(async (req) => {
     if (!['admin', 'socio', 'vendedor'].includes(papel ?? '')) {
       return erro('papel deve ser admin, socio ou vendedor');
     }
+    const comissaoPct = papel === 'vendedor'
+      ? Math.max(0, Math.min(100, Number(corpo.comissaoPct) || 0))
+      : 0;
 
     const email = `${usuario}@${DOMINIO_INTERNO}`;
     const senha = gerarSenhaTemporaria();
@@ -120,7 +124,7 @@ Deno.serve(async (req) => {
       iniciais: gerarIniciais(nome),
       permissoes: corpo.permissoes ?? {},
       auth_user_id: criado.user.id,
-      meta_mensal: 0, comissao_pct: 0, ativo: true,
+      meta_mensal: 0, comissao_pct: comissaoPct, ativo: true,
     });
     if (eVendedor) {
       // Não deixa órfão: se a linha de vendedor falhar, desfaz a conta de auth.

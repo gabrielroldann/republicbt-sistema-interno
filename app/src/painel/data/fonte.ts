@@ -116,6 +116,7 @@ export async function carregar(forcar = false): Promise<void> {
   repor(pagamentos, ok<any[]>(rPagamentos).map((p) => ({
     id: p.id, vendaId: p.venda_id, data: p.data,
     valor: n(p.valor), forma: p.forma as FormaPagamento,
+    parcelas: p.parcelas ?? 1, taxaPct: n(p.taxa_pct),
   })));
 
   repor(despesas, ok<any[]>(rDespesas).map((d) => ({

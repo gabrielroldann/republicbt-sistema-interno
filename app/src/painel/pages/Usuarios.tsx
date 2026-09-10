@@ -99,6 +99,7 @@ function FormularioCriarUsuario({ onCriado }: { onCriado: (usuario: string, senh
   const [usuario, setUsuario] = useState('');
   const [papel, setPapel] = useState<PapelUsuario>('vendedor');
   const [linkPagamento, setLinkPagamento] = useState(true);
+  const [comissaoPct, setComissaoPct] = useState('3');
   const [erro, setErro] = useState<string | null>(null);
 
   const mCriar = useMutation({
@@ -107,10 +108,11 @@ function FormularioCriarUsuario({ onCriado }: { onCriado: (usuario: string, senh
       usuario: usuario.trim().toLowerCase(),
       papel,
       permissoes: papel === 'vendedor' ? { link_pagamento: linkPagamento } : {},
+      comissaoPct: papel === 'vendedor' ? Number(comissaoPct) || 0 : undefined,
     }),
     onSuccess: (senha) => {
       onCriado(usuario.trim().toLowerCase(), senha);
-      setNome(''); setUsuario(''); setPapel('vendedor'); setLinkPagamento(true);
+      setNome(''); setUsuario(''); setPapel('vendedor'); setLinkPagamento(true); setComissaoPct('3');
     },
     onError: (e) => setErro(e instanceof Error ? e.message : 'não deu para criar o usuário'),
   });
@@ -146,12 +148,20 @@ function FormularioCriarUsuario({ onCriado }: { onCriado: (usuario: string, senh
         </Campo>
 
         {papel === 'vendedor' && (
-          <Campo label="Gerar Link de Pagamento" hint="sem isso, o link só sai pelo painel (sócio/admin)">
-            <Segmentado
-              opcoes={[{ valor: true, label: 'Sim' }, { valor: false, label: 'Não' }]}
-              valor={linkPagamento} aoMudar={setLinkPagamento}
-            />
-          </Campo>
+          <>
+            <Campo label="Gerar Link de Pagamento" hint="sem isso, o link só sai pelo painel (sócio/admin)">
+              <Segmentado
+                opcoes={[{ valor: true, label: 'Sim' }, { valor: false, label: 'Não' }]}
+                valor={linkPagamento} aoMudar={setLinkPagamento}
+              />
+            </Campo>
+            <Campo label="Comissão (%)" hint="sobre o valor recebido — pode variar por vendedor">
+              <Input
+                type="number" step="0.1" min="0" max="100"
+                value={comissaoPct} onChange={(e) => setComissaoPct(e.target.value)}
+              />
+            </Campo>
+          </>
         )}
 
         {papel === 'admin' && (

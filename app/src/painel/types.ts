@@ -11,26 +11,112 @@ export const CATEGORIAS: { id: Categoria; label: string }[] = [
 
 export type FormaPagamento = 'pix' | 'credito' | 'credito_parcelado' | 'debito' | 'dinheiro';
 
+/**
+ * O CANAL de cobrança do cartão/débito — maquininha física presencial ou
+ * Link de Pagamento (venda remota, o cliente paga numa página da Cielo).
+ *
+ * Deliberadamente NÃO é uma forma de pagamento nova: `forma_pagamento`
+ * continua descrevendo o MEIO (crédito/débito/pix/dinheiro), igual sempre
+ * foi — inclusive é assim que o fluxo automático do Link
+ * (`cielo-link-notificacao`) já grava. O canal só decide qual TABELA DE
+ * TAXA usar (`taxaDe`), porque maquininha e Link são credenciamentos
+ * diferentes com taxas diferentes pro mesmo meio. Pix e dinheiro têm a
+ * mesma taxa nos dois canais, então o seletor só importa pra
+ * crédito/crédito parcelado/débito.
+ */
+export type CanalCobranca = 'maquininha' | 'link_pagamento';
+
+export const CANAIS_COBRANCA: { id: CanalCobranca; label: string }[] = [
+  { id: 'maquininha', label: 'Maquininha' },
+  { id: 'link_pagamento', label: 'Link de Pagamento' },
+];
+
+/**
+ * Taxas da maquininha PRESENCIAL da Cielo (tabela real, conferida pelo
+ * comprovante — Crédito, 1x a 12x). `Total% = Taxa% + parcelas × TC%`.
+ *
+ * Débito/Voucher ainda não têm tabela real — `debito` abaixo continua um
+ * valor de referência até termos o comprovante daquela aba.
+ */
+export const TAXAS_CREDITO_PARCELADO: Record<number, number> = {
+  1: 3.49, 2: 4.49, 3: 5.49, 4: 7.09, 5: 7.59, 6: 8.19,
+  7: 8.39, 8: 9.09, 9: 9.79, 10: 10.49, 11: 12.29, 12: 12.49,
+};
+
+/** Taxa real do crédito, pela quantidade de parcelas. Fora de 1–12, usa a de 12x. */
+export function taxaCredito(parcelas: number): number {
+  const p = Math.min(Math.max(Math.round(parcelas) || 1, 1), 12);
+  return TAXAS_CREDITO_PARCELADO[p];
+}
+
+/**
+ * O SIMULADOR: "cliente paga o juros" — a loja nunca absorve a taxa do
+ * parcelamento. Dado o valor que a loja quer NET (líquido, o preço à vista),
+ * devolve o valor BRUTO a cobrar (na maquininha ou no Link, conforme
+ * `canal`) para aquele número de parcelas, de forma que, depois de
+ * descontada a taxa real, sobre exatamente o valor líquido pretendido.
+ *
+ * `bruto = liquido / (1 − taxa/100)` — a mesma conta em `registrarVenda`
+ * (receita × taxaPct) fecha sozinha: margem = liquido − custo, não importa
+ * quantas parcelas o cliente escolheu nem por qual canal foi cobrado.
+ */
+export function valorBrutoParcelado(
+  valorLiquido: number, parcelas: number, canal: CanalCobranca = 'maquininha',
+): number {
+  if (parcelas <= 1) return valorLiquido;
+  const taxa = canal === 'link_pagamento' ? taxaLinkPagamento(parcelas) : taxaCredito(parcelas);
+  return valorLiquido / (1 - taxa / 100);
+}
+
+/**
+ * Taxas do LINK DE PAGAMENTO da Cielo (canal separado da maquininha
+ * presencial — `cielo-link-criar`/`cielo-link-notificacao`). Tabela real
+ * repassada pelo usuário (Visa e Master, idênticas nas duas bandeiras).
+ * `Total% = Taxa% + parcelas × TC%`. Débito aqui é o débito do Link, não o
+ * da maquininha — 1,32%, também diferente do valor de referência acima.
+ *
+ * IMPORTANTE: diferente da maquininha, o Link de Pagamento gera o link com
+ * um preço FIXO (`cielo-link-criar`) e é o CLIENTE quem escolhe quantas
+ * parcelas na página de checkout da Cielo — a loja não sabe o parcelamento
+ * na hora de precificar o link, então não dá pra "simular e cobrar o bruto"
+ * como na maquininha. Hoje a taxa real (usada só pra margem, depois que o
+ * pagamento confirma) é lida de volta pelo `payment.numberOfPayments` que a
+ * Cielo devolve — ver `cielo-link-notificacao`.
+ */
+export const TAXAS_LINK_PAGAMENTO_PARCELADO: Record<number, number> = {
+  1: 3.84, 2: 5.55, 3: 6.13, 4: 6.73, 5: 7.39, 6: 7.99,
+  7: 8.60, 8: 9.45, 9: 10.41, 10: 10.71, 11: 11.68, 12: 12.57,
+};
+export const TAXA_LINK_PAGAMENTO_DEBITO = 1.32;
+
+/** Taxa real do crédito no Link de Pagamento, pela quantidade de parcelas. */
+export function taxaLinkPagamento(parcelas: number): number {
+  const p = Math.min(Math.max(Math.round(parcelas) || 1, 1), 12);
+  return TAXAS_LINK_PAGAMENTO_PARCELADO[p];
+}
+
 export const FORMAS_PAGAMENTO: { id: FormaPagamento; label: string; taxa: number }[] = [
   { id: 'pix', label: 'Pix', taxa: 0.99 },
   { id: 'debito', label: 'Débito', taxa: 1.99 },
-  { id: 'credito', label: 'Crédito à vista', taxa: 3.49 },
-  { id: 'credito_parcelado', label: 'Crédito parcelado', taxa: 5.49 },
+  { id: 'credito', label: 'Crédito à vista', taxa: taxaCredito(1) },
+  // taxa aqui é só o valor de EXIBIÇÃO no <select>; o cálculo de verdade usa
+  // taxaCredito(parcelas) — ver NovaVenda.tsx.
+  { id: 'credito_parcelado', label: 'Crédito parcelado', taxa: taxaCredito(10) },
   { id: 'dinheiro', label: 'Dinheiro', taxa: 0 },
 ];
 
 /**
  * As formas de pagamento que a tela MANUAL (Nova Venda) pode oferecer.
  *
- * IN SEFAZ-CE 87/2025 exige que cartão/Pix saiam na nota com `tipo_integracao=1`
- * (integrado), o que só é verdade quando o código de autorização vem de uma
- * consulta real à maquininha — ver `cielo-confirmar-venda`. Numa venda batida
- * à mão aqui no painel não existe esse dado, e digitar o número que apareceu
- * no comprovante NÃO conta como integração pra norma. Por isso só dinheiro
- * (nunca precisa de integração) fica disponível neste formulário — cartão e
- * Pix são vendidos exclusivamente pelo Carrinho (maquininha).
+ * Hoje NÃO existe uma tela de Carrinho/maquininha integrada (a loja opera a
+ * maquininha física da Cielo diretamente) — então toda venda, inclusive
+ * cartão e Pix, é registrada por aqui. Isso sai como `tipo_integracao=2`
+ * (não integrado) na nota — válido pela IN SEFAZ-CE 87/2025, só não é o
+ * caminho "automático" (tipo_integracao=1), que exige autorização vinda de
+ * uma consulta real à Cielo (ver `cielo-confirmar-venda`). Quando/se o
+ * Carrinho existir, aí sim cartão/Pix somem daqui.
  */
-export const FORMAS_PAGAMENTO_MANUAL = FORMAS_PAGAMENTO.filter((f) => f.id === 'dinheiro');
+export const FORMAS_PAGAMENTO_MANUAL = FORMAS_PAGAMENTO;
 
 export interface Vendedor {
   id: string;
@@ -101,6 +187,10 @@ export interface Pagamento {
   data: string;
   valor: number;
   forma: FormaPagamento;
+  /** Parcelas DESTA perna (independente das outras pernas da mesma venda). */
+  parcelas: number;
+  /** Taxa real (%) desta perna, congelada no momento do registro. */
+  taxaPct: number;
 }
 
 /**
@@ -169,10 +259,20 @@ export interface VendaCompleta extends Venda {
   creditoTradeIn: number;
   /** o que o cliente precisa pagar em dinheiro: receita − crédito do trade-in */
   aReceber: number;
+  /** BRUTO cobrado do cliente — usado pra status/progresso de pagamento. */
   recebido: number;
+  /**
+   * Líquido da taxa da maquininha/Link — o dinheiro que de fato cai na conta.
+   *
+   * Numa perna bruteada pra o cliente cobrir o juro do parcelamento, `recebido`
+   * (bruto) fica ACIMA da venda de propósito, mas esse excedente nunca chega
+   * na conta — a maquininha desconta a taxa antes de depositar. Este campo é
+   * a base certa pra "dinheiro que entrou" (KPI de caixa) e pra comissão.
+   */
+  recebidoLiquido: number;
   emAberto: number;
   statusPagamento: StatusPagamento;
-  /** comissão incide sobre o RECEBIDO, não sobre o contratado */
+  /** comissão incide sobre o RECEBIDO LÍQUIDO, não sobre o contratado */
   comissao: number;
 }
 
@@ -245,6 +345,8 @@ export interface ResumoPeriodo {
   unidadesVendidas: number;
   /** contratado ≠ recebido: com parcelamento, a diferença é o que ainda vai entrar */
   recebido: number;
+  /** recebido, líquido da taxa da maquininha/Link — o dinheiro que de fato caiu na conta */
+  recebidoLiquido: number;
   emAberto: number;
   comissaoAPagar: number;
   creditoTradeIn: number;

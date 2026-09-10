@@ -44,6 +44,7 @@ export async function listarUsuarios(): Promise<Usuario[]> {
  */
 export async function criarUsuario(dados: {
   nome: string; usuario: string; papel: PapelUsuario; permissoes?: Record<string, boolean>;
+  comissaoPct?: number;
 }): Promise<string> {
   const { data, error } = await supabase.functions.invoke('gerenciar-usuario', {
     body: { acao: 'criar', ...dados },

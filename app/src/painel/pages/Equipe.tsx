@@ -50,9 +50,9 @@ export default function Equipe() {
     defaultValues: { mes: mesRef(), receita: acomp?.meta ?? 50000 },
   });
 
-  function submeterVendedor(f: FormVendedor) {
-    salvarVendedor({ id: editando?.id, ...f });
-    qc.invalidateQueries();
+  async function submeterVendedor(f: FormVendedor) {
+    await salvarVendedor({ id: editando?.id, ...f });
+    await qc.invalidateQueries();
     fv.reset({ nome: '', metaMensal: 18000, comissaoPct: 3 });
     setEditando(null);
   }
@@ -62,9 +62,9 @@ export default function Equipe() {
     fv.reset({ nome: v.nome, metaMensal: v.metaMensal, comissaoPct: v.comissaoPct });
   }
 
-  function submeterMeta(f: FormMeta) {
-    definirMeta(f.mes, f.receita);
-    qc.invalidateQueries();
+  async function submeterMeta(f: FormMeta) {
+    await definirMeta(f.mes, f.receita);
+    await qc.invalidateQueries();
   }
 
   const metasOrdenadas = [...(metas ?? [])].sort((a, b) => b.mes.localeCompare(a.mes)).slice(0, 8);
@@ -190,7 +190,7 @@ export default function Equipe() {
                             <Button
                               variant="ghost" size="iconSm"
                               title={v.ativo ? 'Desativar' : 'Reativar'}
-                              onClick={() => { alternarVendedorAtivo(v.id); qc.invalidateQueries(); }}
+                              onClick={async () => { await alternarVendedorAtivo(v.id); await qc.invalidateQueries(); }}
                             >
                               <Power className={cn('h-3.5 w-3.5', v.ativo ? 'text-positive' : 'text-faint')} />
                             </Button>

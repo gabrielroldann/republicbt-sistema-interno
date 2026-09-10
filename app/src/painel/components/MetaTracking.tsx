@@ -252,9 +252,9 @@ function EditarMeta({ mes, atual }: { mes: string; atual: number }) {
     defaultValues: { receita: atual },
   });
 
-  function salvar(v: Form) {
-    definirMeta(mes, v.receita);
-    qc.invalidateQueries();
+  async function salvar(v: Form) {
+    await definirMeta(mes, v.receita);
+    await qc.invalidateQueries();
     setAberto(false);
   }
 

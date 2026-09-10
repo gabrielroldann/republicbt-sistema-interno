@@ -298,7 +298,7 @@ function DialogoDespesa({
             )}>
               Compra de estoque sai do caixa mas <strong className="text-ink-2">não
               entra no resultado</strong>: vira ativo e só vira custo quando a peça
-              é vendida. Para atualizar o custo médio, use “Dar entrada” no Estoque.
+              é vendida. Para atualizar o custo médio, use “Dar entrada” em Produtos.
             </p>
           )}
 

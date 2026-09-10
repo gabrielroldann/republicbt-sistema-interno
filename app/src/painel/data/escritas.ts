@@ -112,10 +112,11 @@ export async function gravarVenda(v: VendaParaGravar): Promise<string> {
 
 export async function gravarPagamento(
   vendaId: string, data: string, valor: number, forma: string,
+  parcelas = 1, taxaPct = 0,
 ) {
   if (MOCK) return;
   const { error } = await supabase.from('pagamento')
-    .insert({ venda_id: vendaId, data, valor, forma });
+    .insert({ venda_id: vendaId, data, valor, forma, parcelas, taxa_pct: taxaPct });
   verificar(error);
   await recarregar();
 }

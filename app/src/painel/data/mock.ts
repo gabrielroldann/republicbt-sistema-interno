@@ -407,6 +407,8 @@ function gerarPagamentos(): Pagamento[] {
           data: v.data,
           valor: total,
           forma: v.formaPagamento,
+          parcelas: v.parcelas,
+          taxaPct: v.taxaPct,
         });
       }
       continue;
@@ -424,6 +426,8 @@ function gerarPagamentos(): Pagamento[] {
         data: isoDia(venc),
         valor: n === v.parcelas - 1 ? total - valorParcela * (v.parcelas - 1) : valorParcela,
         forma: v.formaPagamento,
+        parcelas: v.parcelas,
+        taxaPct: v.taxaPct,
       });
     }
   }

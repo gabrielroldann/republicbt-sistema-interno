@@ -105,39 +105,66 @@ Deno.serve(async (req: Request) => {
       return resposta({ erro: msg }, 422);
     }
 
-    const formaPagamentoFocus = FORMA_PAGAMENTO_FOCUS[venda.forma_pagamento] ?? '99';
     const valorTotal = Number(venda.quantidade) * Number(venda.preco_unit);
 
-    const formaPagamento: Record<string, unknown> = {
-      forma_pagamento: formaPagamentoFocus,
-      valor_pagamento: valorTotal,
-    };
-    // Grupo YA (tpIntegra/CNPJ/cAut/idTermPag) só pode ir na nota quando a
-    // forma de pagamento é eletrônica -- confirmado agora com a SEFAZ de
-    // verdade (ambiente homologação): uma venda em dinheiro com
-    // `tipo_integracao` presente (mesmo '2', "não integrado") volta
-    // REJEITADA, código 963 "Tipo de pagamento não aceita o grupo de
-    // cartões ou boletos". Pix (tPag 17) aceita o grupo normalmente. Por
-    // isso o grupo inteiro fica de fora quando a venda é em dinheiro --
-    // antes desta correção, TODA venda em dinheiro seria rejeitada pela
-    // SEFAZ assim que emitida (achado batendo a nota de teste de verdade).
-    if (venda.forma_pagamento !== 'dinheiro') {
-      if (venda.autorizacao_cartao) {
-        formaPagamento.tipo_integracao = '1';
-        formaPagamento.cnpj_credenciadora = CNPJ_CIELO;
-        formaPagamento.nome_credenciadora = 'Cielo';
-        formaPagamento.numero_autorizacao = venda.autorizacao_cartao;
-        // idTermPag (Grupo YA) — identificador do terminal de pagamento.
-        // Só faz sentido junto de tipo_integracao=1: a Focus/SEFAZ não pedem
-        // isso em pagamento não integrado. Antes desta correção, o dado já
-        // era gravado na venda (ver cielo-confirmar-venda) mas nunca chegava
-        // até aqui — a nota saía sem esse campo, incompleta perante a norma.
-        if (venda.terminal_pagamento) {
-          formaPagamento.id_terminal_pagamento = venda.terminal_pagamento;
-        }
+    /**
+     * MÚLTIPLAS FORMAS DE PAGAMENTO NUMA VENDA SÓ (ex.: parte Pix, parte
+     * cartão parcelado): cada uma vira sua própria linha em `pagamento` (ver
+     * Nova Venda / `registrarVenda`). Quando há mais de uma linha, o Grupo YA
+     * já suporta um array com um item por forma -- é só isso que muda aqui.
+     * Com 0 ou 1 linha (o caso de sempre: vendas automáticas da maquininha e
+     * do Link de Pagamento continuam gravando exatamente 1), o comportamento
+     * é idêntico ao de antes, usando as colunas da própria `venda`.
+     */
+    const { data: pernas } = await supabase.from('pagamento')
+      .select('forma, valor, parcelas')
+      .eq('venda_id', vendaId);
+
+    // Regra confirmada com a SEFAZ de verdade (ambiente homologação): uma
+    // venda em dinheiro com `tipo_integracao` presente (mesmo '2', "não
+    // integrado") volta REJEITADA, código 963 "Tipo de pagamento não aceita
+    // o grupo de cartões ou boletos". Pix (tPag 17) aceita o grupo
+    // normalmente. Por isso o grupo Grupo YA fica de fora quando a forma é
+    // dinheiro -- vale por perna, não só pra venda inteira.
+    function montarFormaPagamento(
+      forma: string, valor: number, autorizacaoCartao?: string | null, terminalPagamento?: string | null,
+    ): Record<string, unknown> {
+      const fp: Record<string, unknown> = {
+        forma_pagamento: FORMA_PAGAMENTO_FOCUS[forma] ?? '99',
+        valor_pagamento: valor,
+      };
+      if (forma === 'dinheiro') return fp;
+      if (autorizacaoCartao) {
+        fp.tipo_integracao = '1';
+        fp.cnpj_credenciadora = CNPJ_CIELO;
+        fp.nome_credenciadora = 'Cielo';
+        fp.numero_autorizacao = autorizacaoCartao;
+        // idTermPag (Grupo YA) só faz sentido junto de tipo_integracao=1.
+        if (terminalPagamento) fp.id_terminal_pagamento = terminalPagamento;
       } else {
-        formaPagamento.tipo_integracao = '2';
+        fp.tipo_integracao = '2';
       }
+      return fp;
+    }
+
+    let formasPagamento: Record<string, unknown>[];
+    if (pernas && pernas.length > 1) {
+      // Arredondamento: a soma das pernas tem que bater EXATAMENTE com o
+      // total da nota, em centavos -- a diferença (se houver) vai pra maior.
+      const somaPernas = pernas.reduce((s, p) => s + Number(p.valor), 0);
+      const diferenca = Math.round((valorTotal - somaPernas) * 100) / 100;
+      const maiorIdx = pernas.reduce((iMax, p, i, arr) => Number(p.valor) > Number(arr[iMax].valor) ? i : iMax, 0);
+      formasPagamento = pernas.map((p, i) => montarFormaPagamento(
+        p.forma, Number(p.valor) + (i === maiorIdx ? diferenca : 0),
+        // Vendas manuais com mais de uma perna nunca têm autorização real
+        // capturada por perna hoje -- só o fluxo automático (maquininha/Link,
+        // sempre 1 perna) grava isso na própria `venda`.
+        null, null,
+      ));
+    } else {
+      formasPagamento = [montarFormaPagamento(
+        venda.forma_pagamento, valorTotal, venda.autorizacao_cartao, venda.terminal_pagamento,
+      )];
     }
 
     const corpo: Record<string, unknown> = {
@@ -166,7 +193,7 @@ Deno.serve(async (req: Request) => {
           icms_situacao_tributaria: '102',
         },
       ],
-      formas_pagamento: [formaPagamento],
+      formas_pagamento: formasPagamento,
     };
     if (domicilio && cliente?.cpf) {
       corpo.cpf_destinatario = cliente.cpf.replace(/\D/g, '');

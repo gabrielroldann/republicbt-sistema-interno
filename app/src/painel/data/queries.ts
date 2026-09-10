@@ -11,8 +11,8 @@
  */
 
 import {
-  CATEGORIAS, FORMAS_PAGAMENTO,
-  type AcompanhamentoMeta, type Campanha, type Categoria, type Conta,
+  CATEGORIAS, FORMAS_PAGAMENTO, taxaCredito, taxaLinkPagamento, TAXA_LINK_PAGAMENTO_DEBITO,
+  type AcompanhamentoMeta, type Campanha, type CanalCobranca, type Categoria, type Conta,
   type CustoFixo, type CustoMidia, type RetornoCampanha,
   type DesempenhoVendedor, type Despesa, type EstimativaImposto, type FaixaSimples,
   type FatiaCategoria, type FormaPagamento, type ItemEstoque, type LucroUnitario,
@@ -42,8 +42,22 @@ import {
 /** Latência artificial: garante que os estados de carregamento sejam reais. */
 const atraso = (ms = 180) => new Promise((res) => setTimeout(res, ms));
 
-const taxaDe = (f: FormaPagamento) =>
-  FORMAS_PAGAMENTO.find((x) => x.id === f)?.taxa ?? 0;
+/**
+ * Taxa de uma forma de pagamento. `credito_parcelado` NÃO é um número fixo —
+ * depende de quantas parcelas o cliente escolheu (tabela real da maquininha
+ * ou do Link, conforme `canal` — ver `taxaCredito`/`taxaLinkPagamento` em
+ * `types.ts`). Chame sempre com `parcelas` quando souber; o default de 1x só
+ * existe para não quebrar chamadas antigas. Débito também muda de tabela por
+ * canal (1,99% maquininha × 1,32% Link); Pix e dinheiro são iguais nos dois.
+ */
+export const taxaDe = (f: FormaPagamento, parcelas = 1, canal: CanalCobranca = 'maquininha') => {
+  if (f === 'credito_parcelado' || f === 'credito') {
+    const p = f === 'credito' ? 1 : parcelas;
+    return canal === 'link_pagamento' ? taxaLinkPagamento(p) : taxaCredito(p);
+  }
+  if (f === 'debito' && canal === 'link_pagamento') return TAXA_LINK_PAGAMENTO_DEBITO;
+  return FORMAS_PAGAMENTO.find((x) => x.id === f)?.taxa ?? 0;
+};
 
 /**
  * ÍNDICES EM MEMÓRIA — e a armadilha que eles criaram.
@@ -106,7 +120,17 @@ function completar(v: Venda): VendaCompleta {
   const creditoTradeIn = v.tradeIn?.valorCredito ?? 0;
   const aReceber = receita - creditoTradeIn;
   const meus = pagamentosPorVenda.get(v.id) ?? [];
+  // Bruto cobrado do cliente — usado pra status de pagamento (quanto ele já
+  // passou no cartão/Pix/dinheiro, sem descontar taxa nenhuma).
   const recebido = meus.reduce((s, p) => s + p.valor, 0);
+  // Líquido de taxa — base da comissão. Numa perna bruteada pra o cliente
+  // cobrir o juro do parcelamento, bruto > valor da venda, mas líquido de
+  // taxa bate certinho com o que a loja de fato embolsa; sem comissão nem
+  // sobre a taxa da maquininha (nunca "entrou") nem sobre o juro repassado
+  // (não é venda, é reembolso de custo financeiro).
+  const recebidoLiquido = meus.reduce(
+    (s, p) => s + p.valor * (1 - (p.taxaPct ?? v.taxaPct) / 100), 0,
+  );
   const emAberto = Math.max(aReceber - recebido, 0);
 
   const statusPagamento: VendaCompleta['statusPagamento'] =
@@ -116,9 +140,9 @@ function completar(v: Venda): VendaCompleta {
     ...v, produto, vendedor, receita, custo, taxa, margem,
     margemPct: receita > 0 ? (margem / receita) * 100 : 0,
     pagamentos: meus,
-    creditoTradeIn, aReceber, recebido, emAberto, statusPagamento,
+    creditoTradeIn, aReceber, recebido, recebidoLiquido, emAberto, statusPagamento,
     // comissão sobre o que ENTROU: ninguém deve comissão de dinheiro que não caiu
-    comissao: recebido * (v.comissaoPct / 100),
+    comissao: recebidoLiquido * (v.comissaoPct / 100),
   };
 }
 
@@ -185,6 +209,7 @@ export async function getResumo(p: Periodo): Promise<ResumoPeriodo> {
     numeroVendas: vs.length,
     unidadesVendidas: vs.reduce((s, v) => s + v.quantidade, 0),
     recebido: vs.reduce((s, v) => s + v.recebido, 0),
+    recebidoLiquido: vs.reduce((s, v) => s + v.recebidoLiquido, 0),
     emAberto: vs.reduce((s, v) => s + v.emAberto, 0),
     comissaoAPagar: vs.reduce((s, v) => s + v.comissao, 0),
     creditoTradeIn: vs.reduce((s, v) => s + v.creditoTradeIn, 0),
@@ -257,14 +282,67 @@ export async function getVendas(p: Periodo, f: FiltrosVenda = {}): Promise<Venda
 /* ---------- mutations ---------- */
 // Alteram o mock em memória. Com backend viram POST/PATCH — as telas não mudam.
 
+/**
+ * Uma PERNA de pagamento — a venda pode ter mais de uma (ex.: parte no Pix,
+ * parte no cartão parcelado), cada uma virando sua própria linha em
+ * `pagamento`, com sua própria taxa/parcelas. A soma do valor "de fachada"
+ * de todas as pernas tem que bater com `precoUnit × quantidade` (menos o
+ * trade-in) — `registrarVenda` recusa se não bater, pra nunca gravar uma
+ * venda cuja nota não vai fechar com o que foi de fato cobrado.
+ *
+ * "De fachada" porque quando o CLIENTE absorve o juro do parcelamento
+ * (regra da loja: nunca é a loja), `valor` já vem BRUTEADO pelo simulador —
+ * maior que o que a loja de fato quer daquela perna. `liquidoAlvo`, quando
+ * preenchido, é esse valor de fachada verdadeiro (o que a loja pediu pro
+ * simulador embolsar); sem ele, `valor` em si é tomado como de fachada, e
+ * a taxa daquela perna vira custo real da loja — o comportamento de sempre
+ * para quem paga à vista ou não passou pelo simulador.
+ */
+export interface PernaPagamento {
+  forma: FormaPagamento;
+  parcelas: number;
+  valor: number;
+  liquidoAlvo?: number;
+  /** Maquininha física ou Link de Pagamento — ver `CanalCobranca` em types.ts. */
+  canal?: CanalCobranca;
+}
+
+/** Valor "de fachada" de uma perna — ver o comentário de `PernaPagamento`. */
+function fachadaDaPerna(p: PernaPagamento): number {
+  return p.liquidoAlvo && p.liquidoAlvo > 0 ? p.liquidoAlvo : p.valor;
+}
+
+/**
+ * Custo real de taxa que a LOJA absorve nesta perna.
+ *
+ * Quando o cliente bruteou pra cobrir o juro (`liquidoAlvo` preenchido), o
+ * dinheiro que sobra depois da taxa real (maquininha OU Link, conforme
+ * `canal`) já bate com o valor de fachada — a loja não perde nada, e o
+ * custo aqui é zero (a menos de centavo de arredondamento, por isso o
+ * `Math.max(0, …)`). Sem `liquidoAlvo`, é o cálculo de sempre: a taxa cheia
+ * sai da margem da loja.
+ */
+function custoTaxaDaPerna(p: PernaPagamento): number {
+  const fachada = fachadaDaPerna(p);
+  const liquidoReal = p.valor * (1 - taxaDe(p.forma, p.parcelas, p.canal) / 100);
+  return Math.max(0, fachada - liquidoReal);
+}
+
 export interface NovaVendaInput {
   data: string;
   produtoId: string;
   vendedorId: string;
   quantidade: number;
   precoUnit: number;
-  formaPagamento: FormaPagamento;
-  parcelas: number;
+  /** Uma ou mais formas de pagamento cobrindo o valor total da venda. */
+  pagamentos: PernaPagamento[];
+  /**
+   * `false` = venda fiada: as pernas acima só definem taxa/margem e o que vai
+   * na nota, mas NENHUMA linha de `pagamento` (recebível) é gravada ainda —
+   * fica em aberto pra registrar o recebimento depois. Default `true`
+   * (o caso comum: o dinheiro/cartão/Pix já foi cobrado no ato).
+   */
+  receberAgora?: boolean;
   entrega: Venda['entrega'];
   clienteNome?: string;
   clienteFone?: string;
@@ -272,16 +350,45 @@ export interface NovaVendaInput {
   canal?: Venda['canal'];
   tradeIn?: Venda['tradeIn'];
   observacoes?: string;
-  /** opcional: registra a primeira entrada de dinheiro já no ato */
-  primeiroPagamento?: { data: string; valor: number; forma: FormaPagamento };
 }
 
 export async function registrarVenda(input: NovaVendaInput): Promise<Venda> {
   const produto = mapaProdutos.get(input.produtoId);
   const vendedor = mapaVendedores.get(input.vendedorId);
   if (!produto) throw new Error('Produto não encontrado');
+  if (!input.pagamentos || input.pagamentos.length === 0) {
+    throw new Error('Informe ao menos uma forma de pagamento');
+  }
 
-  const taxaPct = FORMAS_PAGAMENTO.find((f) => f.id === input.formaPagamento)?.taxa ?? 0;
+  const receita = input.precoUnit * input.quantidade - (input.tradeIn?.valorCredito ?? 0);
+  // Valida contra a soma "de fachada", não a bruta — numa perna bruteada
+  // pelo simulador (cliente pagando o juro), o valor de fato cobrado é
+  // maior que a fachada de propósito. Ver `fachadaDaPerna`.
+  const somaPernas = input.pagamentos.reduce((s, p) => s + fachadaDaPerna(p), 0);
+  // Meio centavo de tolerância: arredondamento de parcela (ver simulador em
+  // types.ts) pode deixar a soma a 1 centavo do total.
+  if (Math.abs(somaPernas - receita) > 0.5) {
+    throw new Error(
+      `A soma das formas de pagamento (${somaPernas.toFixed(2)}) não bate com o valor da venda (${receita.toFixed(2)}).`,
+    );
+  }
+
+  // Taxa CONGELADA da venda = média ponderada pelas pernas — mantém
+  // `completar()` (o resto do painel: relatórios, metas, comissão por
+  // vendedor) funcionando sem saber que existe mais de uma perna, porque
+  // margem = receita − custo − (receita × taxaPct/100) fecha do mesmo jeito.
+  // A taxa de CADA perna, porém, fica congelada em `pagamento.taxaPct` — é
+  // ela que `focus-nfe-emitir` e o fluxo de caixa usam de verdade (a taxa
+  // REAL cobrada pela maquininha, não o custo líquido pra loja calculado
+  // abaixo — quando o cliente bruteia pra cobrir o juro, a loja não perde
+  // essa taxa, então ela não pode sair da margem).
+  const taxaReaisTotal = input.pagamentos.reduce((s, p) => s + custoTaxaDaPerna(p), 0);
+  const taxaPctBlend = receita > 0 ? (taxaReaisTotal / receita) * 100 : 0;
+
+  // Perna dominante (a de maior valor) preenche as colunas singulares que a
+  // venda ainda carrega por compatibilidade (telas antigas, `carrinho`,
+  // exportações) — nunca é usada para o cálculo de margem, que já é o blend.
+  const dominante = [...input.pagamentos].sort((a, b) => b.valor - a.valor)[0];
 
   /**
    * Com banco ligado, GRAVA PRIMEIRO e volta.
@@ -299,9 +406,9 @@ export async function registrarVenda(input: NovaVendaInput): Promise<Venda> {
       quantidade: input.quantidade,
       precoUnit: input.precoUnit,
       custoUnit: produto.custo,
-      formaPagamento: input.formaPagamento,
-      parcelas: input.parcelas,
-      taxaPct,
+      formaPagamento: dominante.forma,
+      parcelas: dominante.parcelas,
+      taxaPct: taxaPctBlend,
       comissaoPct: vendedor?.comissaoPct ?? 0,
       entrega: input.entrega,
       canal: input.canal ?? null,
@@ -313,9 +420,14 @@ export async function registrarVenda(input: NovaVendaInput): Promise<Venda> {
       observacoes: input.observacoes ?? null,
     });
 
-    if (input.primeiroPagamento && input.primeiroPagamento.valor > 0) {
-      await gravarPagamento(id, input.primeiroPagamento.data,
-        input.primeiroPagamento.valor, input.primeiroPagamento.forma);
+    if (input.receberAgora !== false) {
+      for (const perna of input.pagamentos) {
+        if (perna.valor <= 0) continue;
+        await gravarPagamento(
+          id, input.data, perna.valor, perna.forma, perna.parcelas,
+          taxaDe(perna.forma, perna.parcelas, perna.canal),
+        );
+      }
     }
     return mapaVendas.get(id) ?? (vendas.find((v) => v.id === id) as Venda);
   }
@@ -330,10 +442,10 @@ export async function registrarVenda(input: NovaVendaInput): Promise<Venda> {
     // custo vem do catálogo e é CONGELADO aqui — reposição futura mais cara não
     // reescreve a margem desta venda
     custoUnit: produto.custo,
-    formaPagamento: input.formaPagamento,
-    parcelas: input.parcelas,
+    formaPagamento: dominante.forma,
+    parcelas: dominante.parcelas,
     comissaoPct: vendedor?.comissaoPct ?? 0,
-    taxaPct,
+    taxaPct: taxaPctBlend,
     entrega: input.entrega,
     clienteNome: input.clienteNome,
     clienteFone: input.clienteFone,
@@ -365,11 +477,15 @@ export async function registrarVenda(input: NovaVendaInput): Promise<Venda> {
     data: venda.data,
   });
 
-  if (input.primeiroPagamento && input.primeiroPagamento.valor > 0) {
-    await registrarPagamento({
-      vendaId: venda.id,
-      ...input.primeiroPagamento,
-    });
+  if (input.receberAgora !== false) {
+    for (const perna of input.pagamentos) {
+      if (perna.valor <= 0) continue;
+      await registrarPagamento({
+        vendaId: venda.id, data: input.data, valor: perna.valor,
+        forma: perna.forma, parcelas: perna.parcelas,
+        taxaPct: taxaDe(perna.forma, perna.parcelas, perna.canal),
+      });
+    }
   }
 
   return venda;
@@ -377,9 +493,10 @@ export async function registrarVenda(input: NovaVendaInput): Promise<Venda> {
 
 export async function registrarPagamento(p: {
   vendaId: string; data: string; valor: number; forma: FormaPagamento;
+  parcelas: number; taxaPct: number;
 }) {
   if (gravando()) {
-    await gravarPagamento(p.vendaId, p.data, p.valor, p.forma);
+    await gravarPagamento(p.vendaId, p.data, p.valor, p.forma, p.parcelas, p.taxaPct);
     return pagamentos.find((x) => x.vendaId === p.vendaId && x.data === p.data)!;
   }
   const novo: Pagamento = { id: `pg${pagamentos.length + 1}-${Date.now().toString(36)}`, ...p };
@@ -487,7 +604,13 @@ export async function getMovimentos(p: Periodo): Promise<MovimentoCaixa[]> {
     .filter((pg) => dentro(pg.data, p))
     .map((pg) => {
       const venda = mapaVendas.get(pg.vendaId);
-      const taxaPct = taxaDe(pg.forma) / 100;
+      // Prefere a taxa CONGELADA nesta perna do pagamento (correta mesmo
+      // quando a venda tem mais de uma forma de pagamento, cada uma com sua
+      // própria taxa e parcelamento — inclusive quando é legitimamente 0%,
+      // dinheiro). `??` e não `||`: zero é um valor válido, não "ausente".
+      // Só cai pra venda/tabela genérica se o campo nem existir (registro
+      // fora dos caminhos conhecidos de escrita).
+      const taxaPct = (pg.taxaPct ?? venda?.taxaPct ?? taxaDe(pg.forma)) / 100;
       return {
         id: `mv-${pg.id}`,
         data: pg.data,
@@ -514,7 +637,12 @@ export async function getFluxoCaixa(p: Periodo): Promise<PontoSaldo[]> {
   await atraso();
   // Saldo acumulado precisa considerar TUDO que aconteceu antes do período,
   // senão a linha começa do zero e engana quem olha.
-  const liquido = (pg: Pagamento) => pg.valor * (1 - taxaDe(pg.forma) / 100);
+  const liquido = (pg: Pagamento) => {
+    const venda = mapaVendas.get(pg.vendaId);
+    // Mesma prioridade de `getMovimentos`: taxa da PERNA primeiro (`??`, não
+    // `||` — zero é válido), venda depois, tabela genérica por último.
+    return pg.valor * (1 - (pg.taxaPct ?? venda?.taxaPct ?? taxaDe(pg.forma)) / 100);
+  };
 
   const antes = { ent: 0, sai: 0 };
   for (const pg of pagamentos) if (pg.data < isoDia(p.de)) antes.ent += liquido(pg);

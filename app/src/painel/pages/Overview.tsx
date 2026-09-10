@@ -166,8 +166,8 @@ export default function Overview() {
         <KpiCard
           label="Recebido no período"
           icone={Wallet}
-          valor={fmtBRL(r?.recebido ?? 0)}
-          hint="dinheiro que de fato entrou"
+          valor={fmtBRL(r?.recebidoLiquido ?? 0)}
+          hint="dinheiro que de fato entrou, já líquido de taxa"
           carregando={carregando}
         />
         <KpiCard

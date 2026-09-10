@@ -67,10 +67,26 @@ const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession
 const STATUS_PAGO = new Set(['paid']);
 const STATUS_ENCERRADO_SEM_PAGAMENTO = new Set(['denied', 'voided', 'expired', 'notfinalized']);
 
-/** Espelha FORMAS_PAGAMENTO de painel/types.ts -- se mudar lá, muda aqui. */
-const TAXAS: Record<string, number> = {
-  pix: 0.99, debito: 1.99, credito: 3.49, credito_parcelado: 5.49, dinheiro: 0,
+/**
+ * Espelha `painel/types.ts` -- se mudar lá, muda aqui. ATENÇÃO: é a tabela
+ * do LINK DE PAGAMENTO, DIFERENTE da maquininha presencial (`cielo-confirmar-
+ * venda` usa outra) -- taxas de canal de cobrança distinto, mesmo quando o
+ * "forma_pagamento" tem o mesmo nome no nosso enum. Antes usava 5.49% fixo
+ * pra qualquer parcelamento (cópia da tabela errada e desatualizada) --
+ * corrigido pra tabela real por parcelas do Link (Visa/Master).
+ */
+const TAXAS_FIXAS: Record<string, number> = { pix: 0.99, debito: 1.32, dinheiro: 0 };
+const TAXAS_CREDITO_LINK_PARCELADO: Record<number, number> = {
+  1: 3.84, 2: 5.55, 3: 6.13, 4: 6.73, 5: 7.39, 6: 7.99,
+  7: 8.60, 8: 9.45, 9: 10.41, 10: 10.71, 11: 11.68, 12: 12.57,
 };
+function taxaDe(forma: string, parcelas: number): number {
+  if (forma === 'credito' || forma === 'credito_parcelado') {
+    const p = Math.min(Math.max(Math.round(parcelas) || 1, 1), 12);
+    return TAXAS_CREDITO_LINK_PARCELADO[p];
+  }
+  return TAXAS_FIXAS[forma] ?? 0;
+}
 
 /**
  * `payment.type` da consulta (docs.cielo.com.br/link/reference/conteúdo-das-
@@ -438,7 +454,7 @@ Deno.serve(async (req) => {
       custo_unit: produto.custo,
       forma_pagamento: formaPagamento,
       parcelas,
-      taxa_pct: TAXAS[formaPagamento] ?? 0,
+      taxa_pct: taxaDe(formaPagamento, parcelas),
       comissao_pct: 0,
       entrega: 'pendente',
       canal: 'whatsapp',
@@ -463,6 +479,7 @@ Deno.serve(async (req) => {
     });
     await db.from('pagamento').insert({
       venda_id: venda.id, data: hoje, valor: item.preco_unit * item.quantidade, forma: formaPagamento,
+      parcelas, taxa_pct: taxaDe(formaPagamento, parcelas),
     });
     vendaIds.push(venda.id as string);
   }

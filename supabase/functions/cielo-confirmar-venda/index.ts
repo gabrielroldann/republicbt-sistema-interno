@@ -73,10 +73,28 @@ function headersCielo() {
   };
 }
 
-/** Espelha FORMAS_PAGAMENTO de painel/types.ts -- se mudar lá, muda aqui. */
-const TAXAS: Record<string, number> = {
-  pix: 0.99, debito: 1.99, credito: 3.49, credito_parcelado: 5.49, dinheiro: 0,
+/**
+ * Espelha `painel/types.ts` -- se mudar lá, muda aqui (Edge Functions não
+ * compartilham módulo com o app sem complicar o deploy).
+ *
+ * `credito`/`credito_parcelado` NÃO são taxa fixa -- dependem de quantas
+ * parcelas (tabela real da maquininha PRESENCIAL, `TAXAS_CREDITO_PARCELADO`
+ * em types.ts). Corrigido: antes usava 5.49% fixo pra qualquer parcelamento,
+ * quando em 10x a taxa real é 10.49% -- quase o dobro, distorcendo a margem
+ * de toda venda parcelada capturada por aqui.
+ */
+const TAXAS_FIXAS: Record<string, number> = { pix: 0.99, debito: 1.99, dinheiro: 0 };
+const TAXAS_CREDITO_PARCELADO: Record<number, number> = {
+  1: 3.49, 2: 4.49, 3: 5.49, 4: 7.09, 5: 7.59, 6: 8.19,
+  7: 8.39, 8: 9.09, 9: 9.79, 10: 10.49, 11: 12.29, 12: 12.49,
 };
+function taxaDe(forma: string, parcelas: number): number {
+  if (forma === 'credito' || forma === 'credito_parcelado') {
+    const p = Math.min(Math.max(Math.round(parcelas) || 1, 1), 12);
+    return TAXAS_CREDITO_PARCELADO[p];
+  }
+  return TAXAS_FIXAS[forma] ?? 0;
+}
 
 function formaPagamentoDe(t: any): string {
   const primario = t?.payment_product?.primary_product_name ?? '';
@@ -174,8 +192,8 @@ Deno.serve(async (req) => {
   if (!transacao) return erro('pedido pago mas sem transação encontrada -- avise o suporte', 500, pedido);
 
   const formaPagamento = formaPagamentoDe(transacao);
-  const taxaPct = TAXAS[formaPagamento] ?? 0;
   const parcelas = Number(transacao?.payment_product?.number_of_quotas ?? 0) || 1;
+  const taxaPct = taxaDe(formaPagamento, parcelas);
 
   // 2. itens do carrinho, com dados do produto (custo congelado agora)
   const { data: itens } = await db
@@ -231,6 +249,8 @@ Deno.serve(async (req) => {
       data: hoje,
       valor: item.preco_unit * item.quantidade,
       forma: formaPagamento,
+      parcelas,
+      taxa_pct: taxaPct,
     });
 
     vendaIds.push(venda.id as string);

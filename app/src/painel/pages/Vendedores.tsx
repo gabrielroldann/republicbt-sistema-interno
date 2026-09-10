@@ -15,7 +15,7 @@ import {
 import { Table, TBody, TD, TH, THead, TR, TableWrap } from '@/components/ui/table';
 import { useDesempenho } from '@/painel/data/hooks';
 import { useEhAdmin } from '@/painel/store/filtros';
-import { vendedores as vendedoresMock } from '@/painel/data/mock';
+import { salvarVendedor } from '@/painel/data/queries';
 import { fmtBRL, fmtNum, fmtPct } from '@/lib/utils';
 import type { Vendedor } from '@/painel/types';
 
@@ -143,14 +143,11 @@ function EditarMeta({ vendedor }: { vendedor: Vendedor }) {
     defaultValues: { metaMensal: vendedor.metaMensal, comissaoPct: vendedor.comissaoPct },
   });
 
-  function salvar(v: Form) {
-    // Mock: altera em memória e reprocessa. Com backend, virará uma mutation.
-    const alvo = vendedoresMock.find((x) => x.id === vendedor.id);
-    if (alvo) {
-      alvo.metaMensal = v.metaMensal;
-      alvo.comissaoPct = v.comissaoPct;
-    }
-    qc.invalidateQueries();
+  async function salvar(v: Form) {
+    await salvarVendedor({
+      id: vendedor.id, nome: vendedor.nome, metaMensal: v.metaMensal, comissaoPct: v.comissaoPct,
+    });
+    await qc.invalidateQueries();
     setAberto(false);
   }
 
@@ -179,9 +176,6 @@ function EditarMeta({ vendedor }: { vendedor: Vendedor }) {
             <Button type="button" variant="outline" size="sm" onClick={() => setAberto(false)}>Cancelar</Button>
             <Button type="submit" size="sm">Salvar</Button>
           </div>
-          <p className="text-2xs text-faint">
-            Nesta versão o valor vale apenas para a sessão atual.
-          </p>
         </form>
       </DialogContent>
     </Dialog>

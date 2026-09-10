@@ -10,7 +10,7 @@ const titulos: Record<string, { titulo: string; sub: string }> = {
   '/equipe': { titulo: 'Equipe e Metas', sub: 'Cadastro de vendedores e definição de metas' },
   '/financeiro': { titulo: 'Fluxo de Caixa', sub: 'Entradas, saídas e contas a pagar e receber' },
   '/impostos': { titulo: 'Impostos', sub: 'Estimativa de DAS pelo Simples Nacional' },
-  '/estoque': { titulo: 'Estoque', sub: 'Saldo, giro, margem e capital parado' },
+  '/estoque': { titulo: 'Produtos', sub: 'Catálogo, saldo, giro, margem e capital parado' },
   '/configuracoes': { titulo: 'Configurações', sub: 'Aparência do painel' },
 };
 
